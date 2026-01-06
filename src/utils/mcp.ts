@@ -515,3 +515,86 @@ function serializeYamlValue(value: unknown): string {
   }
   return String(value);
 }
+
+/**
+ * Validation result for MCP config
+ */
+export interface McpValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+/**
+ * Validate MCP config content
+ */
+export function validateMcpConfig(
+  content: string,
+  format: McpFormat,
+): McpValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Try to parse
+  const config = parseMcpConfig(content, format);
+  if (!config) {
+    errors.push(`Failed to parse ${format} config`);
+    return { valid: false, errors, warnings };
+  }
+
+  // Check for mcpServers
+  if (!config.mcpServers) {
+    warnings.push("Config has no mcpServers key");
+    return { valid: true, errors, warnings };
+  }
+
+  // Validate each server
+  for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
+    if (!serverConfig.command) {
+      errors.push(`Server "${serverName}" has no command`);
+    }
+
+    // Check for empty command
+    if (
+      serverConfig.command &&
+      typeof serverConfig.command === "string" &&
+      serverConfig.command.trim() === ""
+    ) {
+      errors.push(`Server "${serverName}" has empty command`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+/**
+ * Get list of commands used in MCP config
+ */
+export function getMcpCommands(config: McpConfig): string[] {
+  const commands = new Set<string>();
+
+  if (config.mcpServers) {
+    for (const serverConfig of Object.values(config.mcpServers)) {
+      if (serverConfig.command) {
+        // Extract base command (first word)
+        const baseCommand = serverConfig.command.split(/\s+/)[0];
+        commands.add(baseCommand);
+      }
+    }
+  }
+
+  return Array.from(commands);
+}
+
+/**
+ * Find servers that exist in target but not in source (would be removed)
+ */
+export function findRemovedServers(
+  sourceConfig: McpConfig,
+  targetConfig: McpConfig,
+): string[] {
+  const sourceServers = new Set(Object.keys(sourceConfig.mcpServers ?? {}));
+  const targetServers = Object.keys(targetConfig.mcpServers ?? {});
+
+  return targetServers.filter((name) => !sourceServers.has(name));
+}

@@ -8,6 +8,9 @@ import {
   obfuscateEnvValue,
   formatEnvForDisplay,
   compareServerConfigs,
+  validateMcpConfig,
+  getMcpCommands,
+  findRemovedServers,
   type McpConfig,
 } from "./mcp.js";
 import type { AssetContent } from "../types/index.js";
@@ -432,5 +435,106 @@ describe("compareServerConfigs", () => {
     const result = compareServerConfigs(a, b);
     expect(result.same).toBe(false);
     expect(result.differences.some((d) => d.includes("[missing]"))).toBe(true);
+  });
+});
+
+describe("validateMcpConfig", () => {
+  it("validates a correct config", () => {
+    const json = JSON.stringify({
+      mcpServers: {
+        filesystem: { command: "npx", args: ["-y", "server"] },
+      },
+    });
+    const result = validateMcpConfig(json, "json");
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("returns error for invalid JSON", () => {
+    const result = validateMcpConfig("invalid {", "json");
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.stringContaining("parse"));
+  });
+
+  it("returns error for server without command", () => {
+    const json = JSON.stringify({
+      mcpServers: {
+        broken: { args: ["test"] },
+      },
+    });
+    const result = validateMcpConfig(json, "json");
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.stringContaining("no command"));
+  });
+
+  it("returns warning for config without mcpServers", () => {
+    const json = JSON.stringify({ otherKey: "value" });
+    const result = validateMcpConfig(json, "json");
+    expect(result.valid).toBe(true);
+    expect(result.warnings).toContainEqual(
+      expect.stringContaining("no mcpServers"),
+    );
+  });
+});
+
+describe("getMcpCommands", () => {
+  it("extracts unique commands from config", () => {
+    const config: McpConfig = {
+      mcpServers: {
+        server1: { command: "npx -y @server/one" },
+        server2: { command: "node" },
+        server3: { command: "npx -y @server/two" },
+      },
+    };
+    const commands = getMcpCommands(config);
+    expect(commands).toContain("npx");
+    expect(commands).toContain("node");
+    expect(commands).toHaveLength(2);
+  });
+
+  it("returns empty array for config without servers", () => {
+    const config: McpConfig = {};
+    const commands = getMcpCommands(config);
+    expect(commands).toHaveLength(0);
+  });
+});
+
+describe("findRemovedServers", () => {
+  it("finds servers that exist in target but not in source", () => {
+    const source: McpConfig = {
+      mcpServers: {
+        kept: { command: "npx" },
+      },
+    };
+    const target: McpConfig = {
+      mcpServers: {
+        kept: { command: "npx" },
+        removed: { command: "node" },
+      },
+    };
+    const removed = findRemovedServers(source, target);
+    expect(removed).toContain("removed");
+    expect(removed).not.toContain("kept");
+  });
+
+  it("returns empty array when no servers removed", () => {
+    const source: McpConfig = {
+      mcpServers: {
+        server1: { command: "npx" },
+        server2: { command: "node" },
+      },
+    };
+    const target: McpConfig = {
+      mcpServers: {
+        server1: { command: "npx" },
+      },
+    };
+    const removed = findRemovedServers(source, target);
+    expect(removed).toHaveLength(0);
+  });
+
+  it("handles empty configs", () => {
+    expect(findRemovedServers({}, {})).toHaveLength(0);
+    expect(findRemovedServers({ mcpServers: {} }, {})).toHaveLength(0);
   });
 });

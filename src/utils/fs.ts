@@ -99,3 +99,50 @@ export async function getSymlinkTarget(
     return null;
   }
 }
+
+/**
+ * Create a backup of a file by copying it to .bak
+ * Returns the backup path if created, null if file didn't exist
+ */
+export async function createBackup(filePath: string): Promise<string | null> {
+  try {
+    await fs.access(filePath);
+    const backupPath = `${filePath}.bak`;
+    await fs.copyFile(filePath, backupPath);
+    return backupPath;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if file content matches expected hash
+ */
+export async function verifyFileHash(
+  filePath: string,
+  expectedContent: string,
+): Promise<boolean> {
+  try {
+    const content = await fs.readFile(filePath, "utf8");
+    return hashContent(content) === hashContent(expectedContent);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a command exists in PATH
+ */
+export async function commandExists(command: string): Promise<boolean> {
+  const { exec } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execAsync = promisify(exec);
+
+  try {
+    const whichCmd = process.platform === "win32" ? "where" : "which";
+    await execAsync(`${whichCmd} ${command}`);
+    return true;
+  } catch {
+    return false;
+  }
+}

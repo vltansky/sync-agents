@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { hashContent } from "./fs.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { hashContent, commandExists } from "./fs.js";
 
 describe("fs utilities", () => {
   describe("hashContent", () => {
@@ -21,6 +21,19 @@ describe("fs utilities", () => {
       expect(hash).toBeDefined();
       expect(typeof hash).toBe("string");
       expect(hash.length).toBe(40);
+    });
+  });
+
+  describe("commandExists", () => {
+    it("should return true for common commands", async () => {
+      // 'node' should exist since we're running in Node.js
+      const exists = await commandExists("node");
+      expect(exists).toBe(true);
+    });
+
+    it("should return false for non-existent commands", async () => {
+      const exists = await commandExists("definitely-not-a-real-command-12345");
+      expect(exists).toBe(false);
     });
   });
 });

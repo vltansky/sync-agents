@@ -20,7 +20,7 @@ import type {
   SyncScope,
 } from "../types/index.js";
 import { discoverAssets } from "../utils/discovery.js";
-import { fileExists } from "../utils/fs.js";
+import { fileExists, commandExists, readFileSafe } from "../utils/fs.js";
 import {
   mergeMcpAssets,
   parseMcpConfig,
@@ -28,6 +28,9 @@ import {
   serializeMcpConfig,
   formatEnvForDisplay,
   compareServerConfigs,
+  validateMcpConfig,
+  getMcpCommands,
+  findRemovedServers,
   type McpConfig,
   type McpFormat,
   type McpServerConfig,
@@ -828,5 +831,98 @@ async function reviewMcpServers(
     });
   }
 
+  // Validate merged configs and check for removals
+  await validateAndWarnMcp(filteredMcpEntries, mcpEntries);
+
   return [...nonMcpEntries, ...filteredMcpEntries];
+}
+
+/**
+ * Validate MCP configs and warn about potential issues
+ */
+async function validateAndWarnMcp(
+  newEntries: SyncPlanEntry[],
+  originalEntries: SyncPlanEntry[],
+): Promise<void> {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  const missingCommands = new Set<string>();
+
+  // Validate each new MCP config
+  for (const entry of newEntries) {
+    const format = detectMcpFormat(entry.asset.path);
+    const validation = validateMcpConfig(entry.asset.content, format);
+
+    for (const err of validation.errors) {
+      errors.push(`${entry.targetClient}: ${err}`);
+    }
+    for (const warn of validation.warnings) {
+      warnings.push(`${entry.targetClient}: ${warn}`);
+    }
+
+    // Check if commands exist
+    const config = parseMcpConfig(entry.asset.content, format);
+    if (config) {
+      const commands = getMcpCommands(config);
+      for (const cmd of commands) {
+        const exists = await commandExists(cmd);
+        if (!exists) {
+          missingCommands.add(cmd);
+        }
+      }
+    }
+  }
+
+  // Check for servers being removed from targets
+  for (const newEntry of newEntries) {
+    const format = detectMcpFormat(newEntry.asset.path);
+    const newConfig = parseMcpConfig(newEntry.asset.content, format);
+    if (!newConfig) continue;
+
+    // Find original config for same target client
+    for (const origEntry of originalEntries) {
+      if (origEntry.targetClient !== newEntry.targetClient) continue;
+
+      // Read existing file at target to check what would be removed
+      const existingContent = await readFileSafe(newEntry.targetPath);
+      if (!existingContent) continue;
+
+      const existingConfig = parseMcpConfig(existingContent, format);
+      if (!existingConfig) continue;
+
+      const removed = findRemovedServers(newConfig, existingConfig);
+      for (const serverName of removed) {
+        warnings.push(
+          `${newEntry.targetClient}: server "${serverName}" will be removed`,
+        );
+      }
+    }
+  }
+
+  // Display warnings
+  if (missingCommands.size > 0) {
+    console.log();
+    console.log(
+      chalk.yellow(
+        `Warning: Commands not found in PATH: ${Array.from(missingCommands).join(", ")}`,
+      ),
+    );
+    console.log(chalk.dim("  These MCP servers may not work correctly."));
+  }
+
+  if (warnings.length > 0) {
+    console.log();
+    console.log(chalk.yellow("Warnings:"));
+    for (const warn of warnings) {
+      console.log(chalk.yellow(`  - ${warn}`));
+    }
+  }
+
+  if (errors.length > 0) {
+    console.log();
+    console.log(chalk.red("Errors:"));
+    for (const err of errors) {
+      console.log(chalk.red(`  - ${err}`));
+    }
+  }
 }

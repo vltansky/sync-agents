@@ -5,11 +5,42 @@ import { parseCliArgs } from "./cli/options.js";
 import { runInteractiveFlow } from "./cli/interactive-v2.js";
 import { buildClientDefinitions } from "./clients/definitions.js";
 import { discoverAssets } from "./utils/discovery.js";
-import { applyPlan } from "./utils/apply.js";
+import { applyPlan, type ApplyResult } from "./utils/apply.js";
 import { buildSyncPlan } from "./utils/plan.js";
 import { fileExists } from "./utils/fs.js";
 import type { ClientDefinition } from "./types/index.js";
 import { exportCursorHistory } from "./utils/cursorHistory.js";
+
+function printApplyResult(result: ApplyResult, verbose: boolean): void {
+  const parts: string[] = [];
+
+  if (result.applied > 0) {
+    parts.push(chalk.green(`${result.applied} applied`));
+  }
+  if (result.skipped > 0) {
+    parts.push(chalk.gray(`${result.skipped} skipped`));
+  }
+  if (result.failed > 0) {
+    parts.push(chalk.red(`${result.failed} failed`));
+  }
+
+  if (parts.length > 0) {
+    console.log();
+    console.log(`Done: ${parts.join(", ")}`);
+  }
+
+  if (result.backups.length > 0 && verbose) {
+    console.log(chalk.dim(`Created ${result.backups.length} backup(s)`));
+  }
+
+  if (result.errors.length > 0) {
+    console.log();
+    console.log(chalk.red("Errors:"));
+    for (const error of result.errors) {
+      console.log(chalk.red(`  - ${error}`));
+    }
+  }
+}
 
 async function main() {
   const options = parseCliArgs(process.argv);
@@ -34,7 +65,8 @@ async function main() {
       ...options,
       link: options.link || result.useSymlinks,
     };
-    await applyPlan(result.entries, applyOptions);
+    const applyResult = await applyPlan(result.entries, applyOptions);
+    printApplyResult(applyResult, options.verbose ?? false);
     return;
   }
 
@@ -65,7 +97,8 @@ async function main() {
   }
 
   const { plan } = buildSyncPlan(assets, available, options);
-  await applyPlan(plan, options);
+  const applyResult = await applyPlan(plan, options);
+  printApplyResult(applyResult, options.verbose ?? false);
 }
 
 function resolveClientsToCheck(
