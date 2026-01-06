@@ -70,6 +70,7 @@ export interface SyncOptions {
   priority?: AgentClientName[];
   exportCursorHistory?: boolean;
   cursorHistoryDest?: string;
+  link?: boolean;
 }
 
 export interface SyncPlanEntry {

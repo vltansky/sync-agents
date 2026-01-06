@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import type { SyncOptions, SyncPlanEntry } from "../types/index.js";
-import { writeFileSafe } from "./fs.js";
+import { writeFileSafe, createSymlink } from "./fs.js";
 
 export async function applyPlan(
   plan: SyncPlanEntry[],
@@ -12,6 +12,8 @@ export async function applyPlan(
     }
     return;
   }
+
+  const useSymlinks = options.link ?? false;
 
   for (const entry of plan) {
     const displayPath = entry.targetRelativePath ?? entry.asset.relativePath;
@@ -26,19 +28,29 @@ export async function applyPlan(
     }
 
     if (options.dryRun) {
+      const action = useSymlinks ? "link" : entry.action;
       console.log(
         chalk.yellow(
-          `${entry.action.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
+          `${action.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
         ),
       );
       continue;
     }
 
-    await writeFileSafe(entry.targetPath, entry.asset.content);
-    console.log(
-      chalk.green(
-        `${entry.action.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
-      ),
-    );
+    if (useSymlinks) {
+      await createSymlink(entry.asset.path, entry.targetPath);
+      console.log(
+        chalk.cyan(
+          `link    ${entry.targetClient} :: ${displayPath} -> ${entry.asset.path}`,
+        ),
+      );
+    } else {
+      await writeFileSafe(entry.targetPath, entry.asset.content);
+      console.log(
+        chalk.green(
+          `${entry.action.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
+        ),
+      );
+    }
   }
 }

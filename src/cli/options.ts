@@ -63,6 +63,7 @@ export function parseCliArgs(argv: string[]): SyncOptions {
       "destination file for exported Cursor history (default: ~/.cursor/AGENTS.md)",
     )
     .option("--dry-run", "preview without writing changes")
+    .option("--link", "use symlinks instead of copying files")
     .option("-v, --verbose", "verbose output");
 
   program.parse(argv);
@@ -108,6 +109,7 @@ export function parseCliArgs(argv: string[]): SyncOptions {
     priority,
     exportCursorHistory: Boolean(opts.exportCursorHistory),
     cursorHistoryDest: opts.cursorHistoryDest,
+    link: Boolean(opts.link),
   } satisfies SyncOptions;
 }
 

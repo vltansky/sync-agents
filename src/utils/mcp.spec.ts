@@ -5,6 +5,9 @@ import {
   serializeMcpConfig,
   mergeMcpConfigs,
   mergeMcpAssets,
+  obfuscateEnvValue,
+  formatEnvForDisplay,
+  compareServerConfigs,
   type McpConfig,
 } from "./mcp.js";
 import type { AssetContent } from "../types/index.js";
@@ -304,5 +307,130 @@ command = "gh"`,
     expect(result).toBeTruthy();
     expect(result).toContain("[mcpServers.filesystem]");
     expect(result).toContain("[mcpServers.github]");
+  });
+});
+
+describe("obfuscateEnvValue", () => {
+  it("obfuscates values for secret key names", () => {
+    expect(obfuscateEnvValue("API_KEY", "my-secret-value-12345")).toContain(
+      "...",
+    );
+    expect(obfuscateEnvValue("SECRET_TOKEN", "abcdefghij")).toContain("...");
+    expect(obfuscateEnvValue("PASSWORD", "mysecretpassword")).toContain("...");
+    expect(obfuscateEnvValue("AUTH_TOKEN", "token12345678")).toContain("...");
+  });
+
+  it("obfuscates OpenAI-style tokens", () => {
+    expect(obfuscateEnvValue("OPENAI", "sk-abc123def456ghi789")).toContain(
+      "...",
+    );
+    expect(obfuscateEnvValue("SOME_VAR", "sk-proj-abcdefgh")).toContain("...");
+  });
+
+  it("obfuscates GitHub tokens", () => {
+    expect(
+      obfuscateEnvValue("GITHUB", "ghp_1234567890abcdefghijklmnop"),
+    ).toContain("...");
+    expect(obfuscateEnvValue("TOKEN", "github_pat_abcdefghijklmnop")).toContain(
+      "...",
+    );
+  });
+
+  it("obfuscates long alphanumeric strings", () => {
+    const longValue = "abcdefghijklmnopqrstuvwxyz123456789012";
+    expect(obfuscateEnvValue("RANDOM", longValue)).toContain("...");
+  });
+
+  it("does not obfuscate non-secret values", () => {
+    expect(obfuscateEnvValue("DEBUG", "true")).toBe("true");
+    expect(obfuscateEnvValue("LOG_LEVEL", "info")).toBe("info");
+    expect(obfuscateEnvValue("PORT", "3000")).toBe("3000");
+    expect(obfuscateEnvValue("NODE_ENV", "production")).toBe("production");
+  });
+
+  it("returns [hidden] for short secrets", () => {
+    expect(obfuscateEnvValue("API_KEY", "short")).toBe("[hidden]");
+    expect(obfuscateEnvValue("SECRET", "abc")).toBe("[hidden]");
+  });
+
+  it("shows prefix and suffix for longer secrets", () => {
+    const result = obfuscateEnvValue("API_KEY", "sk-abcdefghijklmnop");
+    expect(result).toMatch(/^sk-a\.\.\.nop$/);
+  });
+});
+
+describe("formatEnvForDisplay", () => {
+  it("formats env vars with obfuscated secrets", () => {
+    const env = {
+      API_KEY: "sk-secret12345678",
+      DEBUG: "true",
+    };
+    const result = formatEnvForDisplay(env);
+    expect(result).toContain("API_KEY=");
+    expect(result).toContain("...");
+    expect(result).toContain("DEBUG=true");
+  });
+
+  it("returns 'no env' for empty or undefined env", () => {
+    expect(formatEnvForDisplay(undefined)).toBe("no env");
+    expect(formatEnvForDisplay({})).toBe("no env");
+  });
+});
+
+describe("compareServerConfigs", () => {
+  it("detects identical configs", () => {
+    const a = {
+      command: "npx",
+      args: ["-y", "server"],
+      env: { DEBUG: "true" },
+    };
+    const b = {
+      command: "npx",
+      args: ["-y", "server"],
+      env: { DEBUG: "true" },
+    };
+    const result = compareServerConfigs(a, b);
+    expect(result.same).toBe(true);
+    expect(result.differences).toHaveLength(0);
+  });
+
+  it("detects command differences", () => {
+    const a = { command: "npx" };
+    const b = { command: "node" };
+    const result = compareServerConfigs(a, b);
+    expect(result.same).toBe(false);
+    expect(result.differences).toContainEqual(
+      expect.stringContaining("command"),
+    );
+  });
+
+  it("detects args differences", () => {
+    const a = { command: "npx", args: ["old"] };
+    const b = { command: "npx", args: ["new"] };
+    const result = compareServerConfigs(a, b);
+    expect(result.same).toBe(false);
+    expect(result.differences).toContainEqual(
+      expect.stringContaining("args differ"),
+    );
+  });
+
+  it("detects env value differences with obfuscation", () => {
+    const a = { command: "npx", env: { API_KEY: "sk-secret1111111111" } };
+    const b = { command: "npx", env: { API_KEY: "sk-secret2222222222" } };
+    const result = compareServerConfigs(a, b);
+    expect(result.same).toBe(false);
+    expect(result.differences.some((d) => d.includes("API_KEY"))).toBe(true);
+    // Should be obfuscated - not contain full secrets
+    expect(
+      result.differences.some((d) => d.includes("sk-secret1111111111")),
+    ).toBe(false);
+  });
+
+  it("detects missing env keys", () => {
+    const a = { command: "npx", env: { DEBUG: "true" } };
+    const b = { command: "npx", env: {} };
+    const result = compareServerConfigs(a, b);
+    expect(result.same).toBe(false);
+    expect(result.differences.some((d) => d.includes("[missing]"))).toBe(true);
   });
 });

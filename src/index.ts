@@ -29,7 +29,12 @@ async function main() {
     if (!result.proceed) {
       return;
     }
-    await applyPlan(result.entries, options);
+    // Use symlinks from interactive prompt if not already set via --link
+    const applyOptions = {
+      ...options,
+      link: options.link || result.useSymlinks,
+    };
+    await applyPlan(result.entries, applyOptions);
     return;
   }
 

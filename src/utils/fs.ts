@@ -51,3 +51,51 @@ export async function getFileMtime(filePath: string): Promise<Date | null> {
     return null;
   }
 }
+
+/**
+ * Create a symlink, removing existing file/symlink if present.
+ * Creates parent directories as needed.
+ */
+export async function createSymlink(
+  targetPath: string,
+  linkPath: string,
+): Promise<void> {
+  await fs.mkdir(path.dirname(linkPath), { recursive: true });
+
+  // Remove existing file or symlink
+  try {
+    const stats = await fs.lstat(linkPath);
+    if (stats.isSymbolicLink() || stats.isFile()) {
+      await fs.unlink(linkPath);
+    }
+  } catch {
+    // File doesn't exist, that's fine
+  }
+
+  await fs.symlink(targetPath, linkPath);
+}
+
+/**
+ * Check if a path is a symlink
+ */
+export async function isSymlink(filePath: string): Promise<boolean> {
+  try {
+    const stats = await fs.lstat(filePath);
+    return stats.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get the target of a symlink
+ */
+export async function getSymlinkTarget(
+  filePath: string,
+): Promise<string | null> {
+  try {
+    return await fs.readlink(filePath);
+  } catch {
+    return null;
+  }
+}

@@ -21,7 +21,17 @@ import type {
 } from "../types/index.js";
 import { discoverAssets } from "../utils/discovery.js";
 import { fileExists } from "../utils/fs.js";
-import { mergeMcpAssets } from "../utils/mcp.js";
+import {
+  mergeMcpAssets,
+  parseMcpConfig,
+  detectMcpFormat,
+  serializeMcpConfig,
+  formatEnvForDisplay,
+  compareServerConfigs,
+  type McpConfig,
+  type McpFormat,
+  type McpServerConfig,
+} from "../utils/mcp.js";
 import {
   calculateSimilarity,
   getSimilarityLabel,
@@ -73,6 +83,7 @@ export interface InteractiveResult {
   entries: SyncPlanEntry[];
   scope: SyncScope;
   direction: SyncDirection;
+  useSymlinks?: boolean;
 }
 
 export async function runInteractiveFlow(
@@ -88,13 +99,22 @@ export async function runInteractiveFlow(
     return { proceed: false, entries: [], scope: "all", direction: "sync" };
   }
 
+  // Select direction FIRST (before scanning shows diff info)
+  const direction: SyncDirection | symbol =
+    options.direction && options.direction !== "sync"
+      ? options.direction
+      : await selectDirection(scope);
+  if (typeof direction === "symbol") {
+    outro("Cancelled.");
+    return { proceed: false, entries: [], scope, direction: "sync" };
+  }
+  const resolvedDirection: SyncDirection = direction;
+
   const s = spinner();
   s.start("Scanning for assets...");
 
   const scanResults = await scanAllClients(defs, scope);
   s.stop("Scan complete.");
-
-  displayScanResults(scanResults);
 
   const projectAssets =
     scanResults.find((r) => r.client === "project")?.assets ?? [];
@@ -129,21 +149,14 @@ export async function runInteractiveFlow(
     }
   }
 
-  const direction: SyncDirection | symbol =
-    options.direction && options.direction !== "sync"
-      ? options.direction
-      : await selectDirection(scope);
-  if (typeof direction === "symbol") {
-    outro("Cancelled.");
-    return { proceed: false, entries: [], scope, direction: "sync" };
-  }
-
-  const resolvedDirection: SyncDirection = direction;
-
+  // Now select target clients with diff info
   const targetClients = await selectTargetClients(
     scanResults,
     scope,
     resolvedDirection,
+    allAssets,
+    conflicts,
+    defs,
   );
   if (typeof targetClients === "symbol" || targetClients.length === 0) {
     outro("Cancelled.");
@@ -164,9 +177,22 @@ export async function runInteractiveFlow(
     return { proceed: false, entries: [], scope, direction: resolvedDirection };
   }
 
+  // Review MCP servers before applying
+  const reviewedPlan = await reviewMcpServers(plan);
+  if (typeof reviewedPlan === "symbol") {
+    outro("Cancelled.");
+    return { proceed: false, entries: [], scope, direction: resolvedDirection };
+  }
+
+  if (reviewedPlan.length === 0) {
+    note("All changes filtered out.", "Nothing to do");
+    outro("Nothing to apply.");
+    return { proceed: false, entries: [], scope, direction: resolvedDirection };
+  }
+
   console.log();
   console.log(chalk.bold("Planned changes:"));
-  for (const entry of plan) {
+  for (const entry of reviewedPlan) {
     const icon = entry.action === "create" ? chalk.green("+") : chalk.blue("~");
     console.log(
       `  ${icon} ${entry.targetClient} :: ${entry.targetRelativePath ?? entry.asset.relativePath}`,
@@ -175,7 +201,7 @@ export async function runInteractiveFlow(
   console.log();
 
   const confirmed = await confirm({
-    message: `Apply ${plan.length} change(s)?`,
+    message: `Apply ${reviewedPlan.length} change(s)?`,
     active: "Yes",
     inactive: "No",
   });
@@ -185,8 +211,28 @@ export async function runInteractiveFlow(
     return { proceed: false, entries: [], scope, direction: resolvedDirection };
   }
 
+  // Ask about symlinks (default: no)
+  const useSymlinks = await confirm({
+    message:
+      "Use symlinks instead of copying? (keeps files in sync automatically)",
+    active: "Yes",
+    inactive: "No",
+    initialValue: false,
+  });
+
+  if (typeof useSymlinks === "symbol") {
+    outro("Cancelled.");
+    return { proceed: false, entries: [], scope, direction: resolvedDirection };
+  }
+
   outro("Applying changes...");
-  return { proceed: true, entries: plan, scope, direction: resolvedDirection };
+  return {
+    proceed: true,
+    entries: reviewedPlan,
+    scope,
+    direction: resolvedDirection,
+    useSymlinks: useSymlinks === true,
+  };
 }
 
 async function selectScope(): Promise<SyncScope | symbol> {
@@ -242,6 +288,9 @@ async function selectTargetClients(
   scanResults: ScanResult[],
   scope: SyncScope,
   direction: SyncDirection,
+  allAssets: AssetContent[],
+  conflicts: AssetConflict[],
+  defs: ClientDefinition[],
 ): Promise<string[] | symbol> {
   const availableClients = scanResults.filter((r) => {
     if (scope === "project") return r.client === "project";
@@ -249,15 +298,46 @@ async function selectTargetClients(
     return true;
   });
 
+  // Calculate diff for each client
+  function getDiffLabel(client: ScanResult): string {
+    if (!client.found) {
+      // New client - everything would be added
+      const sourceAssets = allAssets.filter((a) => a.client !== client.client);
+      const uniqueCanonicals = new Set(
+        sourceAssets.map((a) => a.canonicalPath),
+      );
+      return `new, will get +${uniqueCanonicals.size}`;
+    }
+
+    // Calculate what would be created/updated for this client
+    const plan = buildPlanFromConflicts(
+      allAssets,
+      conflicts,
+      [client.client],
+      defs,
+      direction,
+    );
+
+    const creates = plan.filter((p) => p.action === "create").length;
+    const updates = plan.filter((p) => p.action === "update").length;
+
+    if (creates === 0 && updates === 0) {
+      return `${client.assets.length} files, no changes`;
+    }
+
+    const parts: string[] = [];
+    if (creates > 0) parts.push(chalk.green(`+${creates}`));
+    if (updates > 0) parts.push(chalk.blue(`~${updates}`));
+    return `${client.assets.length} files, ${parts.join(" ")}`;
+  }
+
   if (direction === "push") {
     const globalClients = scanResults.filter((r) => r.client !== "project");
     const result = await multiselect({
       message: "Sync to which clients?",
       options: globalClients.map((r) => ({
         value: r.client,
-        label: r.found
-          ? `${r.displayName} (${formatAssetSummary(r.assets)})`
-          : `${r.displayName} (new)`,
+        label: `${r.displayName} (${getDiffLabel(r)})`,
       })),
       initialValues: globalClients.filter((r) => r.found).map((r) => r.client),
     });
@@ -272,9 +352,7 @@ async function selectTargetClients(
     message: "Sync to which clients?",
     options: availableClients.map((r) => ({
       value: r.client,
-      label: r.found
-        ? `${r.displayName} (${formatAssetSummary(r.assets)})`
-        : `${r.displayName} (new)`,
+      label: `${r.displayName} (${getDiffLabel(r)})`,
     })),
     initialValues: availableClients.filter((r) => r.found).map((r) => r.client),
   });
@@ -516,4 +594,239 @@ function addClientSuffix(filePath: string, client: string): string {
   const name = filePath.slice(0, lastDot);
   const ext = filePath.slice(lastDot);
   return `${name}-${client}${ext}`;
+}
+
+/**
+ * Server version from a specific client
+ */
+interface ServerVersion {
+  client: string;
+  config: McpServerConfig;
+  entry: SyncPlanEntry;
+  format: McpFormat;
+  fullConfig: McpConfig;
+}
+
+/**
+ * Extract all MCP servers from plan entries and let user select which to include
+ * Shows diffs for servers that exist in multiple clients with different configs
+ * Returns the filtered plan with only selected MCP servers
+ */
+async function reviewMcpServers(
+  plan: SyncPlanEntry[],
+): Promise<SyncPlanEntry[] | symbol> {
+  // Separate MCP and non-MCP entries
+  const mcpEntries = plan.filter((e) => e.asset.type === "mcp");
+  const nonMcpEntries = plan.filter((e) => e.asset.type !== "mcp");
+
+  if (mcpEntries.length === 0) {
+    return plan;
+  }
+
+  // Collect all servers grouped by name, tracking which client they came from
+  const serverVersions = new Map<string, ServerVersion[]>();
+
+  for (const entry of mcpEntries) {
+    const format = detectMcpFormat(entry.asset.path);
+    const config = parseMcpConfig(entry.asset.content, format);
+    if (!config?.mcpServers) continue;
+
+    for (const [serverName, serverConfig] of Object.entries(
+      config.mcpServers,
+    )) {
+      const versions = serverVersions.get(serverName) ?? [];
+      versions.push({
+        client: entry.asset.client,
+        config: serverConfig,
+        entry,
+        format,
+        fullConfig: config,
+      });
+      serverVersions.set(serverName, versions);
+    }
+  }
+
+  if (serverVersions.size === 0) {
+    return plan;
+  }
+
+  console.log();
+  console.log(
+    chalk.bold(`Found ${serverVersions.size} MCP server(s) to sync:`),
+  );
+
+  // Build selection options, showing diffs for servers with multiple versions
+  const serverChoices: Map<string, ServerVersion> = new Map();
+  const serversToInclude = new Set<string>();
+
+  for (const [serverName, versions] of serverVersions.entries()) {
+    if (versions.length === 1) {
+      // Single version - just show server name with env summary
+      const version = versions[0];
+      const envDisplay = formatEnvForDisplay(version.config.env);
+      console.log(
+        `  ${chalk.cyan(serverName)} ${chalk.gray(`(${version.client})`)} - ${chalk.dim(envDisplay)}`,
+      );
+      serverChoices.set(serverName, version);
+      serversToInclude.add(serverName);
+    } else {
+      // Multiple versions - check if they differ
+      const first = versions[0];
+      let hasDifferences = false;
+
+      for (let i = 1; i < versions.length; i++) {
+        const comparison = compareServerConfigs(
+          first.config,
+          versions[i].config,
+        );
+        if (!comparison.same) {
+          hasDifferences = true;
+          break;
+        }
+      }
+
+      if (!hasDifferences) {
+        // All versions are the same - just use first
+        const envDisplay = formatEnvForDisplay(first.config.env);
+        console.log(
+          `  ${chalk.cyan(serverName)} ${chalk.gray(`(${versions.map((v) => v.client).join(", ")})`)} - ${chalk.dim(envDisplay)}`,
+        );
+        serverChoices.set(serverName, first);
+        serversToInclude.add(serverName);
+      } else {
+        // Versions differ - need user to pick
+        console.log();
+        console.log(
+          chalk.yellow(`  ${serverName} has different configs across clients:`),
+        );
+
+        for (const version of versions) {
+          const envDisplay = formatEnvForDisplay(version.config.env);
+          console.log(
+            `    ${chalk.gray(version.client)}: ${version.config.command ?? "?"} - ${chalk.dim(envDisplay)}`,
+          );
+        }
+
+        // Show specific differences
+        for (let i = 1; i < versions.length; i++) {
+          const comparison = compareServerConfigs(
+            first.config,
+            versions[i].config,
+          );
+          if (!comparison.same) {
+            console.log(
+              chalk.dim(
+                `    Diff (${first.client} vs ${versions[i].client}): ${comparison.differences.join("; ")}`,
+              ),
+            );
+          }
+        }
+
+        // Let user pick which version
+        const versionChoice = await select({
+          message: `Which "${serverName}" config to use?`,
+          options: [
+            ...versions.map((v) => ({
+              value: v.client,
+              label: `${v.client} (${v.config.command ?? "?"})`,
+              hint: formatEnvForDisplay(v.config.env),
+            })),
+            {
+              value: "__skip__",
+              label: "Skip this server",
+            },
+          ],
+        });
+
+        if (typeof versionChoice === "symbol") {
+          return versionChoice;
+        }
+
+        if (versionChoice !== "__skip__") {
+          const selected = versions.find((v) => v.client === versionChoice);
+          if (selected) {
+            serverChoices.set(serverName, selected);
+            serversToInclude.add(serverName);
+          }
+        }
+      }
+    }
+  }
+
+  console.log();
+
+  // Let user deselect servers they don't want
+  const selectedServers = await multiselect({
+    message: "Select MCP servers to include:",
+    options: Array.from(serversToInclude)
+      .sort()
+      .map((name) => ({
+        value: name,
+        label: name,
+      })),
+    initialValues: Array.from(serversToInclude),
+  });
+
+  if (typeof selectedServers === "symbol") {
+    return selectedServers;
+  }
+
+  const selectedSet = new Set(selectedServers);
+
+  // If no servers selected, remove all MCP entries
+  if (selectedSet.size === 0) {
+    return nonMcpEntries;
+  }
+
+  // Build final MCP config per target client
+  const targetFormats = new Map<string, McpFormat>();
+  for (const entry of mcpEntries) {
+    const format = detectMcpFormat(entry.asset.path);
+    targetFormats.set(entry.targetClient, format);
+  }
+
+  // Group entries by target client to build one config per target
+  const entriesByTarget = new Map<string, SyncPlanEntry[]>();
+  for (const entry of mcpEntries) {
+    const entries = entriesByTarget.get(entry.targetClient) ?? [];
+    entries.push(entry);
+    entriesByTarget.set(entry.targetClient, entries);
+  }
+
+  const filteredMcpEntries: SyncPlanEntry[] = [];
+
+  for (const [targetClient, entries] of entriesByTarget.entries()) {
+    // Build merged config with selected servers only
+    const mergedServers: Record<string, McpServerConfig> = {};
+
+    for (const serverName of selectedSet) {
+      const choice = serverChoices.get(serverName);
+      if (choice) {
+        mergedServers[serverName] = choice.config;
+      }
+    }
+
+    if (Object.keys(mergedServers).length === 0) continue;
+
+    const format = targetFormats.get(targetClient) ?? "json";
+    const firstEntry = entries[0];
+
+    // Preserve other top-level keys from first entry's config
+    const baseConfig = parseMcpConfig(firstEntry.asset.content, format) ?? {};
+    const finalConfig: McpConfig = {
+      ...baseConfig,
+      mcpServers: mergedServers,
+    };
+
+    filteredMcpEntries.push({
+      ...firstEntry,
+      asset: {
+        ...firstEntry.asset,
+        content: serializeMcpConfig(finalConfig, format),
+        hash: "merged",
+      },
+    });
+  }
+
+  return [...nonMcpEntries, ...filteredMcpEntries];
 }

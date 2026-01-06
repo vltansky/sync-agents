@@ -1,6 +1,160 @@
 import type { AssetContent } from "../types/index.js";
 
 /**
+ * Secret key name patterns (case-insensitive)
+ */
+const SECRET_KEY_PATTERNS = [
+  /key/i,
+  /token/i,
+  /secret/i,
+  /password/i,
+  /credential/i,
+  /auth/i,
+  /private/i,
+  /access/i,
+  /api_/i,
+];
+
+/**
+ * Secret value patterns
+ */
+const SECRET_VALUE_PATTERNS = [
+  /^sk-/, // OpenAI
+  /^pk-/, // OpenAI public
+  /^ghp_/, // GitHub PAT
+  /^gho_/, // GitHub OAuth
+  /^ghs_/, // GitHub App
+  /^ghu_/, // GitHub user-to-server
+  /^github_pat_/, // GitHub fine-grained PAT
+  /^xox[baprs]-/, // Slack tokens
+  /^Bearer\s/i, // Bearer tokens
+  /^Basic\s/i, // Basic auth
+  /^AKIA/, // AWS access key
+  /^eyJ/, // JWT tokens (base64 JSON)
+];
+
+/**
+ * Check if a key name suggests it contains a secret
+ */
+function isSecretKey(key: string): boolean {
+  return SECRET_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+/**
+ * Check if a value looks like a secret
+ */
+function isSecretValue(value: string): boolean {
+  // Check known patterns
+  if (SECRET_VALUE_PATTERNS.some((pattern) => pattern.test(value))) {
+    return true;
+  }
+
+  // Long alphanumeric strings (32+ chars) are likely secrets
+  if (value.length >= 32 && /^[A-Za-z0-9_-]+$/.test(value)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Obfuscate a value, showing only prefix and suffix
+ */
+function obfuscateValue(value: string): string {
+  if (value.length <= 8) {
+    return "[hidden]";
+  }
+
+  const prefixLen = Math.min(4, Math.floor(value.length / 4));
+  const suffixLen = Math.min(3, Math.floor(value.length / 4));
+
+  return `${value.slice(0, prefixLen)}...${value.slice(-suffixLen)}`;
+}
+
+/**
+ * Obfuscate an env value if it appears to be a secret
+ * Returns the original value if not a secret, obfuscated version otherwise
+ */
+export function obfuscateEnvValue(key: string, value: string): string {
+  if (isSecretKey(key) || isSecretValue(value)) {
+    return obfuscateValue(value);
+  }
+  return value;
+}
+
+/**
+ * Format env vars for display, obfuscating secrets
+ */
+export function formatEnvForDisplay(
+  env: Record<string, string> | undefined,
+): string {
+  if (!env || Object.keys(env).length === 0) {
+    return "no env";
+  }
+
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(env)) {
+    const displayValue = obfuscateEnvValue(key, value);
+    parts.push(`${key}=${displayValue}`);
+  }
+
+  return parts.join(", ");
+}
+
+/**
+ * Compare two server configs and return differences
+ */
+export function compareServerConfigs(
+  a: McpServerConfig,
+  b: McpServerConfig,
+): { same: boolean; differences: string[] } {
+  const differences: string[] = [];
+
+  // Compare command
+  if (a.command !== b.command) {
+    differences.push(`command: "${a.command}" vs "${b.command}"`);
+  }
+
+  // Compare args
+  const argsA = JSON.stringify(a.args ?? []);
+  const argsB = JSON.stringify(b.args ?? []);
+  if (argsA !== argsB) {
+    differences.push(`args differ`);
+  }
+
+  // Compare env
+  const envA = a.env ?? {};
+  const envB = b.env ?? {};
+  const allEnvKeys = new Set([...Object.keys(envA), ...Object.keys(envB)]);
+
+  for (const key of allEnvKeys) {
+    const valA = envA[key];
+    const valB = envB[key];
+
+    if (valA !== valB) {
+      if (valA === undefined) {
+        differences.push(
+          `${key}: [missing] vs ${obfuscateEnvValue(key, valB!)}`,
+        );
+      } else if (valB === undefined) {
+        differences.push(
+          `${key}: ${obfuscateEnvValue(key, valA)} vs [missing]`,
+        );
+      } else {
+        differences.push(
+          `${key}: ${obfuscateEnvValue(key, valA)} vs ${obfuscateEnvValue(key, valB)}`,
+        );
+      }
+    }
+  }
+
+  return {
+    same: differences.length === 0,
+    differences,
+  };
+}
+
+/**
  * Normalized MCP config structure
  */
 export interface McpConfig {
@@ -48,8 +202,7 @@ export function parseMcpConfig(
       default:
         return null;
     }
-  } catch (error) {
-    console.warn(`Failed to parse MCP config: ${error}`);
+  } catch {
     return null;
   }
 }
