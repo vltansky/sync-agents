@@ -34,10 +34,10 @@ export function buildClientDefinitions(
       root: path.join(HOME, ".codex"),
       assets: [
         { type: "agents", patterns: ["AGENTS.md"] },
-        { type: "commands", patterns: ["commands/**/*.md"] },
+        // Codex uses prompts/ for slash commands (not commands/)
+        { type: "commands", patterns: ["prompts/**/*.md"] },
         { type: "rules", patterns: ["rules/**/*.rules"] },
         { type: "skills", patterns: ["skills/**/SKILL.md"] },
-        { type: "prompts", patterns: ["prompts/**/*.md"] },
         { type: "mcp", patterns: [], files: ["config.toml"] },
       ],
     },
@@ -50,7 +50,7 @@ export function buildClientDefinitions(
         { type: "commands", patterns: ["commands/**/*.md"] },
         { type: "rules", patterns: ["rules/**/*.md"] },
         { type: "skills", patterns: ["skills/**/SKILL.md"] },
-        { type: "mcp", patterns: [], files: ["settings.json"] },
+        { type: "mcp", patterns: [], files: [] },
       ],
     },
     {
@@ -122,7 +122,7 @@ export function buildClientDefinitions(
         { type: "commands", patterns: DEFAULT_PATTERNS.commands },
         { type: "rules", patterns: DEFAULT_PATTERNS.rules },
         { type: "skills", patterns: DEFAULT_PATTERNS.skills },
-        { type: "mcp", patterns: [], files: ["settings.json"] },
+        { type: "mcp", patterns: [], files: [] },
       ],
     },
     {
@@ -134,7 +134,7 @@ export function buildClientDefinitions(
         { type: "commands", patterns: DEFAULT_PATTERNS.commands },
         { type: "rules", patterns: DEFAULT_PATTERNS.rules },
         { type: "skills", patterns: DEFAULT_PATTERNS.skills },
-        { type: "mcp", patterns: [], files: ["settings.json"] },
+        { type: "mcp", patterns: [], files: [] },
       ],
     },
     {
@@ -146,7 +146,7 @@ export function buildClientDefinitions(
         { type: "commands", patterns: DEFAULT_PATTERNS.commands },
         { type: "rules", patterns: DEFAULT_PATTERNS.rules },
         { type: "skills", patterns: DEFAULT_PATTERNS.skills },
-        { type: "mcp", patterns: [], files: ["settings.json"] },
+        { type: "mcp", patterns: [], files: [] },
       ],
     },
     {

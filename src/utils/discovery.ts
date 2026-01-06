@@ -6,7 +6,7 @@ import type {
   AssetType,
   ClientDefinition,
 } from "../types/index.js";
-import { fileExists, hashContent, readFileSafe } from "./fs.js";
+import { fileExists, hashContent, readFileSafe, getFileMtime } from "./fs.js";
 import { canonicalizeRelativePath, normalizeRelativePath } from "./paths.js";
 import { getCursorHistoryRoot } from "./cursorPaths.js";
 
@@ -54,6 +54,7 @@ export async function discoverAssets(
         if (content === null) {
           continue;
         }
+        const modifiedAt = await getFileMtime(absPath);
         const relativeRaw =
           path.relative(def.root, absPath) || path.basename(absPath);
         const normalizedRelative = normalizeRelativePath(relativeRaw);
@@ -83,14 +84,13 @@ export async function discoverAssets(
           content,
           hash: hashContent(content),
           metadata,
+          modifiedAt: modifiedAt ?? undefined,
         });
       }
     }
 
-    if (def.name === "cursor") {
-      const historyAssets = await discoverCursorHistory(def.name);
-      out.push(...historyAssets);
-    }
+    // NOTE: Cursor history discovery disabled - it includes editor file history
+    // (backups of all edited files), not agent rules.
   }
   return out;
 }
@@ -154,6 +154,7 @@ async function discoverCursorHistory(
     if (content === null) {
       continue;
     }
+    const modifiedAt = await getFileMtime(absPath);
     const normalizedRel = normalizeRelativePath(
       path.join("cursor-history", rel),
     );
@@ -169,6 +170,7 @@ async function discoverCursorHistory(
       content,
       hash: hashContent(content),
       metadata: { cursorHistory: true },
+      modifiedAt: modifiedAt ?? undefined,
     });
   }
   return assets;

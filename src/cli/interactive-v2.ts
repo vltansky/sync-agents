@@ -11,6 +11,7 @@ import chalk from "chalk";
 import type {
   AssetContent,
   AssetConflict,
+  AssetType,
   ClientDefinition,
   ScanResult,
   SyncDirection,
@@ -20,6 +21,52 @@ import type {
 } from "../types/index.js";
 import { discoverAssets } from "../utils/discovery.js";
 import { fileExists } from "../utils/fs.js";
+import { mergeMcpAssets } from "../utils/mcp.js";
+import {
+  calculateSimilarity,
+  getSimilarityLabel,
+  formatRelativeTime,
+} from "../utils/similarity.js";
+
+/** Format asset count with type breakdown for display */
+function formatAssetSummary(assets: AssetContent[]): string {
+  if (assets.length === 0) return "empty";
+
+  const byType: Partial<Record<AssetType, number>> = {};
+  for (const a of assets) {
+    byType[a.type] = (byType[a.type] || 0) + 1;
+  }
+
+  const typeLabels: Record<AssetType, string> = {
+    agents: "agent",
+    commands: "cmd",
+    rules: "rule",
+    skills: "skill",
+    mcp: "mcp",
+    prompts: "prompt",
+  };
+
+  const parts: string[] = [];
+  for (const [type, count] of Object.entries(byType)) {
+    const label = typeLabels[type as AssetType] || type;
+    parts.push(`${count} ${label}${count > 1 ? "s" : ""}`);
+  }
+
+  // If too many parts, show total with top 2 types
+  if (parts.length > 3) {
+    const total = assets.length;
+    const topTypes = Object.entries(byType)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(([type, count]) => {
+        const label = typeLabels[type as AssetType] || type;
+        return `${count} ${label}${count > 1 ? "s" : ""}`;
+      });
+    return `${total} files: ${topTypes.join(", ")}...`;
+  }
+
+  return parts.join(", ");
+}
 
 export interface InteractiveResult {
   proceed: boolean;
@@ -71,10 +118,8 @@ export async function runInteractiveFlow(
   if (conflicts.length > 0) {
     console.log();
     console.log(chalk.bold.yellow(`Found ${conflicts.length} conflict(s):`));
-    console.log();
 
     for (const conflict of conflicts) {
-      await displayConflict(conflict);
       const resolution = await resolveConflict(conflict);
       if (typeof resolution === "symbol") {
         outro("Cancelled.");
@@ -149,16 +194,15 @@ async function selectScope(): Promise<SyncScope | symbol> {
     message: "What would you like to sync?",
     options: [
       {
-        value: "project",
-        label: "Project files only",
-        hint: "./AGENTS.md, ./rules/*, etc.",
+        value: "global",
+        label: "Global configs",
+        hint: "~/.cursor, ~/.claude, ~/.codex, etc.",
       },
       {
-        value: "global",
-        label: "Global configs only",
-        hint: "~/.cursor, ~/.claude, etc.",
+        value: "project",
+        label: "Project files",
+        hint: "./AGENTS.md, ./rules/*, etc.",
       },
-      { value: "all", label: "Everything", hint: "Project + Global" },
     ],
   });
   return result as SyncScope | symbol;
@@ -211,8 +255,9 @@ async function selectTargetClients(
       message: "Sync to which clients?",
       options: globalClients.map((r) => ({
         value: r.client,
-        label: r.displayName,
-        hint: r.found ? `${r.assets.length} assets` : "will create",
+        label: r.found
+          ? `${r.displayName} (${formatAssetSummary(r.assets)})`
+          : `${r.displayName} (new)`,
       })),
       initialValues: globalClients.filter((r) => r.found).map((r) => r.client),
     });
@@ -227,8 +272,9 @@ async function selectTargetClients(
     message: "Sync to which clients?",
     options: availableClients.map((r) => ({
       value: r.client,
-      label: r.displayName,
-      hint: r.found ? `${r.assets.length} assets` : "will create",
+      label: r.found
+        ? `${r.displayName} (${formatAssetSummary(r.assets)})`
+        : `${r.displayName} (new)`,
     })),
     initialValues: availableClients.filter((r) => r.found).map((r) => r.client),
   });
@@ -300,10 +346,16 @@ function detectConflicts(assets: AssetContent[]): AssetConflict[] {
   for (const [key, versions] of byKey.entries()) {
     const uniqueHashes = new Set(versions.map((v) => v.hash));
     if (uniqueHashes.size > 1) {
+      // Sort by modification time, newest first
+      const sorted = versions.slice().sort((a, b) => {
+        const timeA = a.modifiedAt?.getTime() ?? 0;
+        const timeB = b.modifiedAt?.getTime() ?? 0;
+        return timeB - timeA;
+      });
       conflicts.push({
         canonicalKey: key,
         type: versions[0].type,
-        versions,
+        versions: sorted,
       });
     }
   }
@@ -311,50 +363,48 @@ function detectConflicts(assets: AssetContent[]): AssetConflict[] {
   return conflicts;
 }
 
-async function displayConflict(conflict: AssetConflict): Promise<void> {
-  const [type, path] = conflict.canonicalKey.split("::");
-  console.log(chalk.yellow(`  ${path} (${type})`));
-
-  for (const version of conflict.versions) {
-    const size = (version.content.length / 1024).toFixed(1);
-    console.log(`    ├─ ${version.client}: ${size}kb`);
-  }
-}
-
 async function resolveConflict(
   conflict: AssetConflict,
 ): Promise<"source" | "target" | "merge" | "rename" | "skip" | symbol> {
   const canMerge = conflict.type === "agents" || conflict.type === "mcp";
+  const [, filePath] = conflict.canonicalKey.split("::");
 
-  const options: { value: string; label: string; hint: string }[] =
+  // Calculate similarity between first two versions
+  const similarity =
+    conflict.versions.length >= 2
+      ? calculateSimilarity(
+          conflict.versions[0].content,
+          conflict.versions[1].content,
+        )
+      : 1;
+  const similarityLabel = getSimilarityLabel(similarity);
+  const similarityPct = Math.round(similarity * 100);
+
+  const options: { value: string; label: string; hint?: string }[] =
     conflict.versions.map((v) => ({
       value: v.client,
-      label: `Use ${v.client} version`,
-      hint: `${(v.content.length / 1024).toFixed(1)}kb`,
+      label: `Use ${v.client} (${(v.content.length / 1024).toFixed(1)}kb, ${formatRelativeTime(v.modifiedAt)})`,
     }));
 
   if (canMerge) {
     options.push({
       value: "merge",
       label: "Merge (combine both)",
-      hint: "concatenate content",
     });
   } else {
     options.push({
       value: "rename",
       label: "Keep both (rename)",
-      hint: "e.g. file.md → file-cursor.md",
     });
   }
 
   options.push({
     value: "skip",
     label: "Skip (keep as-is)",
-    hint: "no changes",
   });
 
   const result = await select({
-    message: `How to resolve ${conflict.canonicalKey.split("::")[1]}?`,
+    message: `${filePath} - ${similarityPct}% ${similarityLabel}`,
     options,
   });
 
@@ -391,9 +441,17 @@ function buildPlanFromConflicts(
   for (const conflict of conflicts) {
     if (conflict.resolution === "skip") continue;
     if (conflict.resolution === "merge") {
-      const merged = conflict.versions
-        .map((v) => v.content)
-        .join("\n\n---\n\n");
+      let merged: string;
+      if (conflict.type === "mcp") {
+        // Use smart MCP merging
+        const mcpMerged = mergeMcpAssets(conflict.versions);
+        merged =
+          mcpMerged ??
+          conflict.versions.map((v) => v.content).join("\n\n---\n\n");
+      } else {
+        // Simple text concatenation for agents files
+        merged = conflict.versions.map((v) => v.content).join("\n\n---\n\n");
+      }
       const base = conflict.versions[0];
       resolvedAssets.set(conflict.canonicalKey, {
         ...base,
