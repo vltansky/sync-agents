@@ -2,7 +2,7 @@
 import process from "node:process";
 import chalk from "chalk";
 import { parseCliArgs } from "./cli/options.js";
-import { runInteractiveFlow } from "./cli/interactive-v2.js";
+import { runInteractiveFlow } from "./cli/interactive.js";
 import { buildClientDefinitions } from "./clients/definitions.js";
 import { discoverAssets } from "./utils/discovery.js";
 import { applyPlan, type ApplyResult } from "./utils/apply.js";
