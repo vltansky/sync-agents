@@ -23,6 +23,9 @@ function printApplyResult(result: ApplyResult, verbose: boolean): void {
   if (result.failed > 0) {
     parts.push(chalk.red(`${result.failed} failed`));
   }
+  if (result.rolledBack) {
+    parts.push(chalk.yellow("rolled back"));
+  }
 
   if (parts.length > 0) {
     console.log();

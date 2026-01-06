@@ -116,6 +116,23 @@ export async function createBackup(filePath: string): Promise<string | null> {
 }
 
 /**
+ * Restore a file from its backup
+ * Returns true if restored, false if backup didn't exist or failed
+ */
+export async function restoreBackup(
+  backupPath: string,
+  targetPath: string,
+): Promise<boolean> {
+  try {
+    await fs.access(backupPath);
+    await fs.copyFile(backupPath, targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check if file content matches expected hash
  */
 export async function verifyFileHash(

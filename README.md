@@ -112,11 +112,3 @@ Preview what would change:
 ```bash
 npx sync-agents --dry-run
 ```
-
-## Roadmap
-
-- Diff previews per file in interactive mode
-- Backup snapshots before overwriting
-- Hooks for custom client directories
-
-PRs and ideas welcome!

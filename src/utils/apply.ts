@@ -4,6 +4,7 @@ import {
   writeFileSafe,
   createSymlink,
   createBackup,
+  restoreBackup,
   verifyFileHash,
   readFileSafe,
   hashContent,
@@ -16,6 +17,12 @@ export interface ApplyResult {
   failed: number;
   backups: string[];
   errors: string[];
+  rolledBack: boolean;
+}
+
+interface AppliedChange {
+  targetPath: string;
+  backupPath: string | null;
 }
 
 export async function applyPlan(
@@ -28,6 +35,7 @@ export async function applyPlan(
     failed: 0,
     backups: [],
     errors: [],
+    rolledBack: false,
   };
 
   if (plan.length === 0) {
@@ -38,6 +46,7 @@ export async function applyPlan(
   }
 
   const useSymlinks = options.link ?? false;
+  const appliedChanges: AppliedChange[] = [];
 
   for (const entry of plan) {
     const displayPath = entry.targetRelativePath ?? entry.asset.relativePath;
@@ -93,10 +102,12 @@ export async function applyPlan(
       continue;
     }
 
+    let backupPath: string | null = null;
+
     try {
       // Create backup before overwrite (only for existing files, not symlinks)
       if (!useSymlinks) {
-        const backupPath = await createBackup(entry.targetPath);
+        backupPath = await createBackup(entry.targetPath);
         if (backupPath) {
           result.backups.push(backupPath);
           if (options.verbose) {
@@ -132,18 +143,52 @@ export async function applyPlan(
           result.errors.push(error);
           console.log(chalk.red(`  ✗ ${error}`));
           result.failed++;
-          continue;
+          await rollbackChanges(appliedChanges, result, options.verbose);
+          return result;
         }
       }
 
+      appliedChanges.push({ targetPath: entry.targetPath, backupPath });
       result.applied++;
     } catch (err) {
       const error = `Failed to write ${entry.targetPath}: ${err}`;
       result.errors.push(error);
       console.log(chalk.red(`  ✗ ${error}`));
       result.failed++;
+      await rollbackChanges(appliedChanges, result, options.verbose);
+      return result;
     }
   }
 
   return result;
+}
+
+async function rollbackChanges(
+  changes: AppliedChange[],
+  result: ApplyResult,
+  verbose?: boolean,
+): Promise<void> {
+  if (changes.length === 0) return;
+
+  console.log();
+  console.log(chalk.yellow(`Rolling back ${changes.length} change(s)...`));
+
+  for (const change of changes.reverse()) {
+    if (change.backupPath) {
+      const restored = await restoreBackup(
+        change.backupPath,
+        change.targetPath,
+      );
+      if (restored) {
+        if (verbose) {
+          console.log(chalk.dim(`  restored: ${change.targetPath}`));
+        }
+      } else {
+        result.errors.push(`Failed to restore ${change.targetPath}`);
+      }
+    }
+  }
+
+  result.rolledBack = true;
+  console.log(chalk.yellow("Rollback complete."));
 }
