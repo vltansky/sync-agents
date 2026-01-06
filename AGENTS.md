@@ -8,7 +8,7 @@ Guidance for autonomous coding agents contributing to the `sync-agents` package.
 - Default CLI mode is interactive; keep UX non-destructive.
 
 ## Project Overview
-- **Purpose:** synchronize agent artifacts (AGENTS, commands, rules, skills, MCP configs) across Codex, Claude Code, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose, and the current project.
+- **Purpose:** synchronize agent artifacts (AGENTS, commands, prompts, rules, skills, MCP configs) across Codex, Claude Code, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose, and the current project.
 - **Entry point:** `src/index.ts` (CLI executable exported via `bin.sync-agents`).
 - **Key modules:**
   - `src/cli/options.ts` — argument parsing (commander)
@@ -32,3 +32,5 @@ Guidance for autonomous coding agents contributing to the `sync-agents` package.
 - Never touch directories outside defined client roots without explicit confirmation.
 - Interactive mode must be the safest default; `--dry-run` should work in every mode.
 - When editing file operations, preserve `writeFileSafe` to ensure directories exist before writing.
+- Claude commands are treated as Codex `prompts/*.md` during sync—Codex users must restart the CLI/IDE after syncing so slash commands reload.
+- Writing to Codex’s home (for example `~/.codex/agents` or `~/.codex/prompts`) may require elevated permissions; run the CLI from a context that can create files there or change ownership first.

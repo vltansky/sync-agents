@@ -11,7 +11,8 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "lint": "eslint .",
-    "test": "vitest"
+    "test": "vitest",
+    "prepare": "husky"
   },
   "keywords": [
     "agents",
@@ -42,6 +43,8 @@
     "eslint": "9.13.0",
     "eslint-config-prettier": "9.1.0",
     "eslint-plugin-import": "2.31.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "prettier": "3.2.5",
     "tsx": "4.19.0",
     "typescript": "5.6.3",

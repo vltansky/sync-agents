@@ -1,9 +1,14 @@
-import path from 'node:path';
-import fg from 'fast-glob';
-import type { AgentClientName, AssetContent, AssetType, ClientDefinition } from '../types/index.js';
-import { fileExists, hashContent, readFileSafe } from './fs.js';
-import { canonicalizeRelativePath, normalizeRelativePath } from './paths.js';
-import { getCursorHistoryRoot } from './cursorPaths.js';
+import path from "node:path";
+import fg from "fast-glob";
+import type {
+  AgentClientName,
+  AssetContent,
+  AssetType,
+  ClientDefinition,
+} from "../types/index.js";
+import { fileExists, hashContent, readFileSafe } from "./fs.js";
+import { canonicalizeRelativePath, normalizeRelativePath } from "./paths.js";
+import { getCursorHistoryRoot } from "./cursorPaths.js";
 
 interface DiscoveryFilters {
   types?: AssetType[];
@@ -12,14 +17,10 @@ interface DiscoveryFilters {
 
 export async function discoverAssets(
   definitions: ClientDefinition[],
-  filters: DiscoveryFilters = {}
+  filters: DiscoveryFilters = {},
 ): Promise<AssetContent[]> {
   const out: AssetContent[] = [];
   for (const def of definitions) {
-    if (filters.clients && !filters.clients.includes(def.name)) {
-      continue;
-    }
-
     const rootExists = await fileExists(def.root);
     if (!rootExists) {
       continue;
@@ -53,15 +54,21 @@ export async function discoverAssets(
         if (content === null) {
           continue;
         }
-        const relativeRaw = path.relative(def.root, absPath) || path.basename(absPath);
+        const relativeRaw =
+          path.relative(def.root, absPath) || path.basename(absPath);
         const normalizedRelative = normalizeRelativePath(relativeRaw);
-        let canonicalPath = canonicalizeRelativePath(def.name, assetDef.type, normalizedRelative);
+        let canonicalPath = canonicalizeRelativePath(
+          def.name,
+          assetDef.type,
+          normalizedRelative,
+        );
         let metadata: Record<string, unknown> | undefined;
 
-        if (def.name === 'cursor' && assetDef.type === 'rules') {
+        if (def.name === "cursor" && assetDef.type === "rules") {
           const classification = classifyCursorRule(content);
           if (classification?.alwaysApply === false) {
-            canonicalPath = buildCursorConditionalCanonicalPath(normalizedRelative);
+            canonicalPath =
+              buildCursorConditionalCanonicalPath(normalizedRelative);
           }
           metadata = { cursorRule: classification };
         }
@@ -80,7 +87,7 @@ export async function discoverAssets(
       }
     }
 
-    if (def.name === 'cursor') {
+    if (def.name === "cursor") {
       const historyAssets = await discoverCursorHistory(def.name);
       out.push(...historyAssets);
     }
@@ -90,14 +97,21 @@ export async function discoverAssets(
 
 function deriveAssetName(root: string, absPath: string): string {
   const relative = path.relative(root, absPath);
-  const normalized = relative.replace(/\\/g, '/');
-  const segments = normalized.split('/');
+  const normalized = relative.replace(/\\/g, "/");
+  const segments = normalized.split("/");
   const file = segments.pop() ?? normalized;
-  const withoutExt = file.replace(/\.[^.]+$/, '');
-  return `${segments.join('/')}${segments.length ? '/' : ''}${withoutExt}`.replace(/\/$/, '') || withoutExt;
+  const withoutExt = file.replace(/\.[^.]+$/, "");
+  return (
+    `${segments.join("/")}${segments.length ? "/" : ""}${withoutExt}`.replace(
+      /\/$/,
+      "",
+    ) || withoutExt
+  );
 }
 
-function classifyCursorRule(content: string): { alwaysApply?: boolean } | undefined {
+function classifyCursorRule(
+  content: string,
+): { alwaysApply?: boolean } | undefined {
   const match = content.match(/---\s*([\s\S]*?)---/);
   if (!match) {
     return undefined;
@@ -106,23 +120,27 @@ function classifyCursorRule(content: string): { alwaysApply?: boolean } | undefi
   if (!alwaysMatch) {
     return undefined;
   }
-  return { alwaysApply: alwaysMatch[1].toLowerCase() === 'true' };
+  return { alwaysApply: alwaysMatch[1].toLowerCase() === "true" };
 }
 
 function buildCursorConditionalCanonicalPath(relativePath: string): string {
   const normalized = normalizeRelativePath(relativePath);
-  const withoutRules = normalized.replace(/^rules\/?/, '');
-  return normalizeRelativePath(path.posix.join('skills', 'cursor-rules', withoutRules));
+  const withoutRules = normalized.replace(/^rules\/?/, "");
+  return normalizeRelativePath(
+    path.posix.join("skills", "cursor-rules", withoutRules),
+  );
 }
 
-async function discoverCursorHistory(clientName: AgentClientName): Promise<AssetContent[]> {
+async function discoverCursorHistory(
+  clientName: AgentClientName,
+): Promise<AssetContent[]> {
   const historyRoot = getCursorHistoryRoot();
   const exists = await fileExists(historyRoot);
   if (!exists) {
     return [];
   }
 
-  const matches = await fg(['**/*.md'], {
+  const matches = await fg(["**/*.md"], {
     cwd: historyRoot,
     dot: true,
     onlyFiles: true,
@@ -136,13 +154,17 @@ async function discoverCursorHistory(clientName: AgentClientName): Promise<Asset
     if (content === null) {
       continue;
     }
-    const normalizedRel = normalizeRelativePath(path.join('cursor-history', rel));
+    const normalizedRel = normalizeRelativePath(
+      path.join("cursor-history", rel),
+    );
     assets.push({
       client: clientName,
-      type: 'rules',
+      type: "rules",
       path: absPath,
       relativePath: normalizedRel,
-      canonicalPath: normalizeRelativePath(path.posix.join('rules', normalizedRel)),
+      canonicalPath: normalizeRelativePath(
+        path.posix.join("rules", normalizedRel),
+      ),
       name: deriveAssetName(historyRoot, absPath),
       content,
       hash: hashContent(content),

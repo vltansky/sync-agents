@@ -1,18 +1,33 @@
 export type AgentClientName =
-  | 'project'
-  | 'codex'
-  | 'claude'
-  | 'cursor'
-  | 'opencode'
-  | 'windsurf'
-  | 'cline'
-  | 'roo'
-  | 'gemini'
-  | 'vscode'
-  | 'antigravity'
-  | 'goose';
+  | "project"
+  | "codex"
+  | "claude"
+  | "cursor"
+  | "opencode"
+  | "windsurf"
+  | "cline"
+  | "roo"
+  | "gemini"
+  | "vscode"
+  | "antigravity"
+  | "goose";
 
-export type AssetType = 'agents' | 'commands' | 'rules' | 'skills' | 'mcp';
+export type AssetType =
+  | "agents"
+  | "commands"
+  | "rules"
+  | "skills"
+  | "mcp"
+  | "prompts";
+
+export type SyncScope = "project" | "global" | "all";
+export type SyncDirection = "push" | "pull" | "sync";
+export type ConflictResolution =
+  | "source"
+  | "target"
+  | "merge"
+  | "rename"
+  | "skip";
 
 export interface AssetLocation {
   path: string;
@@ -27,6 +42,7 @@ export interface AssetContent extends AssetLocation {
   content: string;
   hash: string;
   metadata?: Record<string, unknown>;
+  modifiedAt?: Date;
 }
 
 export interface ClientDefinition {
@@ -43,7 +59,9 @@ export interface AssetPattern {
 }
 
 export interface SyncOptions {
-  mode: 'interactive' | 'merge' | 'source';
+  mode: "interactive" | "merge" | "source";
+  scope?: SyncScope;
+  direction?: SyncDirection;
   source?: AgentClientName;
   clients?: AgentClientName[];
   types?: AssetType[];
@@ -58,6 +76,25 @@ export interface SyncPlanEntry {
   asset: AssetContent;
   targetClient: AgentClientName;
   targetPath: string;
-  action: 'create' | 'update' | 'skip';
+  targetRelativePath?: string;
+  action: "create" | "update" | "skip";
   reason?: string;
+}
+
+export interface AssetConflict {
+  canonicalKey: string;
+  type: AssetType;
+  versions: AssetContent[];
+  resolution?: ConflictResolution;
+  resolvedContent?: string;
+  renamedPath?: string;
+  selectedVersion?: AssetContent;
+}
+
+export interface ScanResult {
+  client: AgentClientName;
+  displayName: string;
+  found: boolean;
+  assets: AssetContent[];
+  root: string;
 }

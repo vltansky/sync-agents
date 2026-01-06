@@ -1,97 +1,122 @@
 # sync-agents
 
-Synchronize `AGENTS.md`, commands, rules, skills, and MCP configs across AI coding assistants (Codex, Claude Code, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose) plus your current project. Inspired by `sync-project-mcps`, but focused on the higher-level guidance artifacts that keep assistants aligned.
-
-## Why?
-
-Each assistant stores its guidance files in different hidden folders. Keeping them in sync manually is tedious and error-prone. `sync-agents` discovers existing assets, builds a merge plan, and writes the unified result back to every client so your playbooks stay consistent everywhere.
+Synchronize `AGENTS.md`, commands, rules, skills, and MCP configs across AI coding assistants (Codex, Claude Code, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose) plus your current project.
 
 ## Quick Start
 
 ```bash
-npx -y sync-agents@latest
+npx sync-agents
 ```
 
-Default mode is **interactive**: you get a summary of planned actions and must confirm before files change.
+This launches an interactive wizard that:
 
-### Silent Merge
+1. Asks what to sync (project files, global configs, or both)
+2. Scans all available clients
+3. Shows conflicts and lets you choose how to resolve them
+4. Lets you pick sync direction (push/pull)
+5. Previews changes before applying
+
+## Use Cases
+
+### Push project rules to all your tools
 
 ```bash
-sync-agents --mode merge --dry-run   # preview
-sync-agents --mode merge             # union all assets, apply immediately
+npx sync-agents --project --push
 ```
 
-### Source of Truth
+Your `./AGENTS.md` and `./rules/*` become the source of truth for all AI assistants.
+
+### Pull global configs into your project
 
 ```bash
-sync-agents --mode source --source claude --dry-run
-sync-agents --mode source --source claude
+npx sync-agents --project --pull
 ```
 
-Source mode mirrors one client's assets into all others (removing divergent copies).
+Copy rules from `~/.claude`, `~/.cursor`, etc. into your project.
+
+### Sync only global configs
+
+```bash
+npx sync-agents --global
+```
+
+Keep `~/.claude`, `~/.cursor`, `~/.codex`, etc. in sync with each other (doesn't touch project files).
+
+### Migrate from Cursor
+
+```bash
+npx sync-agents --export-cursor-history
+```
+
+Exports Cursor's "Rules & Config" history to `~/.cursor/AGENTS.md`, then you can sync it everywhere.
 
 ## CLI Options
 
-| Flag | Description |
-|------|-------------|
-| `-m, --mode` | `interactive` (default), `merge`, or `source` |
-| `-s, --source` | Required when `--mode source` |
-| `-c, --clients` | Comma-separated subset (`project,codex,claude,cursor,windsurf,cline,roo,gemini,opencode,vscode,antigravity,goose`) |
-| `-t, --types` | Filter asset types (`agents,commands,rules,skills,mcp`) |
-| `--priority` | Client precedence order when merging |
-| `--dry-run` | Show planned writes without touching disk |
-| `-v, --verbose` | Log skips/up-to-date entries |
-| `--export-cursor-history` | Aggregate Cursor UI “Rules & Config” history into a local file before syncing |
-| `--cursor-history-dest` | Destination for the aggregated Cursor history (default: `~/.cursor/AGENTS.history.md`) |
+| Flag                      | Description                                                     |
+| ------------------------- | --------------------------------------------------------------- |
+| `--project`               | Sync only project files (`./AGENTS.md`, `./rules/*`, etc.)      |
+| `--global`                | Sync only global configs (`~/.cursor`, `~/.claude`, etc.)       |
+| `--push`                  | Push project files → global clients                             |
+| `--pull`                  | Pull global client files → project                              |
+| `-m, --mode`              | `interactive` (default), `merge`, or `source`                   |
+| `-s, --source`            | Source client when using `--mode source`                        |
+| `-c, --clients`           | Comma-separated client list                                     |
+| `-t, --types`             | Filter asset types (`agents,commands,rules,skills,mcp,prompts`) |
+| `--priority`              | Client precedence order when merging                            |
+| `--dry-run`               | Preview without writing                                         |
+| `-v, --verbose`           | Verbose output                                                  |
+| `--export-cursor-history` | Export Cursor UI history to `~/.cursor/AGENTS.md`               |
+| `--cursor-history-dest`   | Custom destination for Cursor history export                    |
 
 ## How It Works
 
-1. **Discover**: scans the current project plus each assistant’s home (Codex, Claude, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose) for `AGENTS.md`, commands, rules, skills, and MCP config files.
-2. **Normalize**: converts every file into a canonical asset key (type + relative path + content hash).
-3. **Plan**: merges assets using either additive priority order or a single source of truth.
-4. **Confirm** (interactive mode): shows stats and waits for approval.
-5. **Apply**: writes the resulting files back to every client root, creating directories as needed.
+1. **Scan** - Finds assets in project and global client directories
+2. **Detect conflicts** - Groups files by type and path, identifies different versions
+3. **Resolve** - For each conflict, choose: use version A, use version B, merge, or skip
+4. **Plan** - Builds a list of files to create/update
+5. **Apply** - Writes files to target locations
 
 ## Supported Clients
 
-- `project` – current working directory (mirrors repo AGENTS/rules)
-- `codex` – `~/.codex`
-- `claude` – `~/.claude`
-- `cursor` – `~/.cursor`
-- `windsurf` – `~/.codeium/windsurf`
-- `cline` – `~/.cline`
-- `roo` – `~/.roo`
-- `gemini` – `~/.gemini`
-- `opencode` – `~/.opencode`
-- `vscode` – VS Code user directory (e.g. `~/Library/Application Support/Code/User`)
-- `antigravity` – Antigravity user directory (e.g. `~/Library/Application Support/Antigravity/User`)
-- `goose` – `~/.config/goose`
-- `CLAUDE.md` files are normalized to `AGENTS.md` when sharing between assistants so Claude’s instructions stay in sync with everyone else.
-
-### Cursor-Specific Behavior
-
-- `.cursor/rules/*.md{c}` files are parsed: entries with `alwaysApply: true` sync as rules, while non-`alwaysApply` entries are treated as skills (`skills/cursor-rules/...`) for other assistants.
-- Cursor’s `~/Library/Application Support/Cursor/User/History/**.md` “Rules & Config” copies are ingested as read-only sources and can be replicated to other clients. Use `--export-cursor-history` to flatten them into a single file (optionally point `--cursor-history-dest` to `~/.cursor/AGENTS.md` for migration).
-- Auto-attached rules from Cursor are intentionally ignored for now; track them manually or export via the flag above until tooling is added.
+| Client        | Location                                         | Notes                      |
+| ------------- | ------------------------------------------------ | -------------------------- |
+| `project`     | `./`                                             | Current working directory  |
+| `codex`       | `~/.codex`                                       |                            |
+| `claude`      | `~/.claude`                                      | `CLAUDE.md` ↔ `AGENTS.md` |
+| `cursor`      | `~/.cursor`                                      | Supports `.mdc` rules      |
+| `opencode`    | `~/.opencode`                                    |                            |
+| `windsurf`    | `~/.codeium/windsurf`                            |                            |
+| `cline`       | `~/.cline`                                       |                            |
+| `roo`         | `~/.roo`                                         |                            |
+| `gemini`      | `~/.gemini`                                      |                            |
+| `vscode`      | `~/Library/Application Support/Code/User`        |                            |
+| `antigravity` | `~/Library/Application Support/Antigravity/User` |                            |
+| `goose`       | `~/.config/goose`                                |                            |
 
 ## Examples
 
-Sync only commands between Claude and Cursor:
+Sync commands between Claude and Cursor only:
 
 ```bash
-sync-agents --mode merge --clients claude,cursor --types commands
+npx sync-agents --mode merge --clients claude,cursor --types commands
 ```
 
-Use project files as canonical definitions:
+Use Claude as the source of truth:
 
 ```bash
-sync-agents --mode source --source project
+npx sync-agents --mode source --source claude
+```
+
+Preview what would change:
+
+```bash
+npx sync-agents --dry-run
 ```
 
 ## Roadmap
 
 - Diff previews per file in interactive mode
 - Backup snapshots before overwriting
-- Hooks for custom client directories or cloud storage
+- Hooks for custom client directories
 
 PRs and ideas welcome!
