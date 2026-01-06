@@ -190,6 +190,11 @@ export function parseMcpConfig(
   content: string,
   format: McpFormat,
 ): McpConfig | null {
+  // Handle empty content
+  if (!content.trim()) {
+    return { mcpServers: {} };
+  }
+
   try {
     switch (format) {
       case "json":

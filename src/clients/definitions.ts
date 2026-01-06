@@ -54,6 +54,18 @@ export function buildClientDefinitions(
       ],
     },
     {
+      name: "claudeDesktop",
+      displayName: "Claude Desktop",
+      root: resolveClaudeDesktopRoot(),
+      assets: [
+        { type: "agents", patterns: [] },
+        { type: "commands", patterns: [] },
+        { type: "rules", patterns: [] },
+        { type: "skills", patterns: [] },
+        { type: "mcp", patterns: [], files: ["claude_desktop_config.json"] },
+      ],
+    },
+    {
       name: "cursor",
       displayName: "Cursor",
       root: path.join(HOME, ".cursor"),
@@ -170,6 +182,7 @@ export const CLIENT_ORDER: AgentClientName[] = [
   "project",
   "codex",
   "claude",
+  "claudeDesktop",
   "cursor",
   "windsurf",
   "cline",
@@ -217,4 +230,16 @@ function resolveGooseRoot(): string {
     return path.join(profile, ".config", "goose");
   }
   return path.join(HOME, ".config", "goose");
+}
+
+function resolveClaudeDesktopRoot(): string {
+  if (process.platform === "darwin") {
+    return path.join(HOME, "Library", "Application Support", "Claude");
+  }
+  if (process.platform === "win32") {
+    const roaming =
+      process.env.APPDATA || path.join(HOME, "AppData", "Roaming");
+    return path.join(roaming, "Claude");
+  }
+  return path.join(HOME, ".config", "Claude");
 }

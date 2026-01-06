@@ -7,6 +7,7 @@ import {
   verifyFileHash,
   readFileSafe,
   hashContent,
+  getSymlinkTarget,
 } from "./fs.js";
 
 export interface ApplyResult {
@@ -66,6 +67,18 @@ export async function applyPlan(
           result.skipped++;
           continue;
         }
+      }
+    } else {
+      // For symlinks, check if already pointing to correct target
+      const currentTarget = await getSymlinkTarget(entry.targetPath);
+      if (currentTarget === entry.asset.path) {
+        if (options.verbose) {
+          console.log(
+            chalk.gray(`unchanged ${entry.targetClient} :: ${displayPath}`),
+          );
+        }
+        result.skipped++;
+        continue;
       }
     }
 

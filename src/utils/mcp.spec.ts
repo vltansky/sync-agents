@@ -103,6 +103,16 @@ args = ["-y", "@modelcontextprotocol/server-filesystem"]`;
     const result = parseMcpConfig("invalid json {", "json");
     expect(result).toBeNull();
   });
+
+  it("returns empty config for empty content", () => {
+    const result = parseMcpConfig("", "json");
+    expect(result).toEqual({ mcpServers: {} });
+  });
+
+  it("returns empty config for whitespace-only content", () => {
+    const result = parseMcpConfig("   \n\t  ", "json");
+    expect(result).toEqual({ mcpServers: {} });
+  });
 });
 
 describe("serializeMcpConfig", () => {

@@ -132,15 +132,16 @@ export async function verifyFileHash(
 
 /**
  * Check if a command exists in PATH
+ * Uses execFile to avoid shell injection
  */
 export async function commandExists(command: string): Promise<boolean> {
-  const { exec } = await import("node:child_process");
+  const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
-  const execAsync = promisify(exec);
+  const execFileAsync = promisify(execFile);
 
   try {
     const whichCmd = process.platform === "win32" ? "where" : "which";
-    await execAsync(`${whichCmd} ${command}`);
+    await execFileAsync(whichCmd, [command]);
     return true;
   } catch {
     return false;

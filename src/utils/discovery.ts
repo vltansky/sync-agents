@@ -1,14 +1,12 @@
 import path from "node:path";
 import fg from "fast-glob";
 import type {
-  AgentClientName,
   AssetContent,
   AssetType,
   ClientDefinition,
 } from "../types/index.js";
 import { fileExists, hashContent, readFileSafe, getFileMtime } from "./fs.js";
 import { canonicalizeRelativePath, normalizeRelativePath } from "./paths.js";
-import { getCursorHistoryRoot } from "./cursorPaths.js";
 
 interface DiscoveryFilters {
   types?: AssetType[];
@@ -129,49 +127,4 @@ function buildCursorConditionalCanonicalPath(relativePath: string): string {
   return normalizeRelativePath(
     path.posix.join("skills", "cursor-rules", withoutRules),
   );
-}
-
-async function discoverCursorHistory(
-  clientName: AgentClientName,
-): Promise<AssetContent[]> {
-  const historyRoot = getCursorHistoryRoot();
-  const exists = await fileExists(historyRoot);
-  if (!exists) {
-    return [];
-  }
-
-  const matches = await fg(["**/*.md"], {
-    cwd: historyRoot,
-    dot: true,
-    onlyFiles: true,
-    unique: true,
-  });
-
-  const assets: AssetContent[] = [];
-  for (const rel of matches) {
-    const absPath = path.join(historyRoot, rel);
-    const content = await readFileSafe(absPath);
-    if (content === null) {
-      continue;
-    }
-    const modifiedAt = await getFileMtime(absPath);
-    const normalizedRel = normalizeRelativePath(
-      path.join("cursor-history", rel),
-    );
-    assets.push({
-      client: clientName,
-      type: "rules",
-      path: absPath,
-      relativePath: normalizedRel,
-      canonicalPath: normalizeRelativePath(
-        path.posix.join("rules", normalizedRel),
-      ),
-      name: deriveAssetName(historyRoot, absPath),
-      content,
-      hash: hashContent(content),
-      metadata: { cursorHistory: true },
-      modifiedAt: modifiedAt ?? undefined,
-    });
-  }
-  return assets;
 }

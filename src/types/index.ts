@@ -2,6 +2,7 @@ export type AgentClientName =
   | "project"
   | "codex"
   | "claude"
+  | "claudeDesktop"
   | "cursor"
   | "opencode"
   | "windsurf"

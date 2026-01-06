@@ -11,7 +11,7 @@ Guidance for autonomous coding agents contributing to the `sync-agents` package.
 
 ## Project Overview
 
-- **Purpose:** synchronize agent artifacts (AGENTS, commands, prompts, rules, skills, MCP configs) across Codex, Claude Code, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose, and the current project.
+- **Purpose:** synchronize agent artifacts (AGENTS, commands, prompts, rules, skills, MCP configs) across Codex, Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose, and the current project.
 - **Entry point:** `src/index.ts` (CLI executable exported via `bin.sync-agents`).
 
 ## Key Modules
@@ -108,6 +108,7 @@ The interactive mode (`npm run dev`) follows this sequence:
 - Claude commands are treated as Codex `prompts/*.md` during sync—Codex users must restart the CLI/IDE after syncing so slash commands reload.
 - Writing to Codex's home (e.g., `~/.codex/agents` or `~/.codex/prompts`) may require elevated permissions.
 - Codex uses `prompts/` for commands (not `commands/`).
+- Claude Desktop only supports MCP configs (`claude_desktop_config.json`), no agents/commands/rules/skills.
 
 ## CLI Flags
 

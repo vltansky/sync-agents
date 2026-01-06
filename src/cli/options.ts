@@ -11,6 +11,7 @@ const CLIENT_CHOICES: AgentClientName[] = [
   "project",
   "codex",
   "claude",
+  "claudeDesktop",
   "cursor",
   "opencode",
   "windsurf",

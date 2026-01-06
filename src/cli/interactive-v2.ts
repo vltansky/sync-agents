@@ -9,6 +9,7 @@ import {
 } from "@clack/prompts";
 import chalk from "chalk";
 import type {
+  AgentClientName,
   AssetContent,
   AssetConflict,
   AssetType,
@@ -20,7 +21,12 @@ import type {
   SyncScope,
 } from "../types/index.js";
 import { discoverAssets } from "../utils/discovery.js";
-import { fileExists, commandExists, readFileSafe } from "../utils/fs.js";
+import {
+  fileExists,
+  commandExists,
+  readFileSafe,
+  hashContent,
+} from "../utils/fs.js";
 import {
   mergeMcpAssets,
   parseMcpConfig,
@@ -295,9 +301,11 @@ async function selectTargetClients(
   conflicts: AssetConflict[],
   defs: ClientDefinition[],
 ): Promise<string[] | symbol> {
+  // For sync mode, filter based on scope
+  // For push/pull, direction determines which clients are targets
   const availableClients = scanResults.filter((r) => {
-    if (scope === "project") return r.client === "project";
     if (scope === "global") return r.client !== "project";
+    // For project scope or all, show all clients
     return true;
   });
 
@@ -369,8 +377,8 @@ async function scanAllClients(
   const results: ScanResult[] = [];
 
   for (const def of defs) {
-    if (scope === "project" && def.name !== "project") continue;
-    if (scope === "global" && def.name === "project") continue;
+    // Always scan all clients to get full picture for diffing
+    // Scope filtering happens in client selection, not scanning
 
     const exists = await fileExists(def.root);
     if (!exists) {
@@ -395,22 +403,6 @@ async function scanAllClients(
   }
 
   return results;
-}
-
-function displayScanResults(results: ScanResult[]): void {
-  console.log();
-  for (const result of results) {
-    if (result.found) {
-      console.log(
-        `  ${chalk.green("✓")} ${result.displayName.padEnd(12)} - ${result.assets.length} asset(s)`,
-      );
-    } else {
-      console.log(
-        `  ${chalk.gray("✗")} ${result.displayName.padEnd(12)} - not found`,
-      );
-    }
-  }
-  console.log();
 }
 
 function detectConflicts(assets: AssetContent[]): AssetConflict[] {
@@ -462,10 +454,13 @@ async function resolveConflict(
   const similarityPct = Math.round(similarity * 100);
 
   const options: { value: string; label: string; hint?: string }[] =
-    conflict.versions.map((v) => ({
-      value: v.client,
-      label: `Use ${v.client} (${(v.content.length / 1024).toFixed(1)}kb, ${formatRelativeTime(v.modifiedAt)})`,
-    }));
+    conflict.versions.map((v) => {
+      const clientLabel = v.client === "project" ? "local (./)" : v.client;
+      return {
+        value: v.client,
+        label: `Use ${clientLabel} (${(v.content.length / 1024).toFixed(1)}kb, ${formatRelativeTime(v.modifiedAt)})`,
+      };
+    });
 
   if (canMerge) {
     options.push({
@@ -509,6 +504,16 @@ function buildPlanFromConflicts(
   const plan: SyncPlanEntry[] = [];
   const conflictKeys = new Set(conflicts.map((c) => c.canonicalKey));
 
+  // Build index of what each client already has (by canonical path and hash)
+  const clientAssets = new Map<string, Map<string, string>>(); // client -> (canonicalPath -> hash)
+  for (const asset of allAssets) {
+    const canonical = asset.canonicalPath ?? asset.relativePath;
+    if (!clientAssets.has(asset.client)) {
+      clientAssets.set(asset.client, new Map());
+    }
+    clientAssets.get(asset.client)!.set(canonical, asset.hash);
+  }
+
   const resolvedAssets = new Map<string, AssetContent>();
 
   for (const asset of allAssets) {
@@ -537,7 +542,7 @@ function buildPlanFromConflicts(
       resolvedAssets.set(conflict.canonicalKey, {
         ...base,
         content: merged,
-        hash: "merged",
+        hash: hashContent(merged),
       });
     } else if (conflict.resolution === "rename") {
       for (const version of conflict.versions) {
@@ -568,20 +573,42 @@ function buildPlanFromConflicts(
     for (const clientName of targetClients) {
       if (clientName === asset.client) continue;
 
+      // Apply direction filtering
+      if (direction === "push" && asset.client !== "project") {
+        // In push mode, only sync FROM project to global clients
+        continue;
+      }
+      if (direction === "pull" && clientName !== "project") {
+        // In pull mode, only sync TO project
+        continue;
+      }
+
       const def = defs.find((d) => d.name === clientName);
       if (!def) continue;
 
       const supportsType = def.assets.some((a) => a.type === asset.type);
       if (!supportsType) continue;
 
-      const targetPath = `${def.root}/${asset.canonicalPath ?? asset.relativePath}`;
+      const canonical = asset.canonicalPath ?? asset.relativePath;
+
+      // Check if target already has this file with same content
+      const targetAssets = clientAssets.get(clientName);
+      if (targetAssets) {
+        const existingHash = targetAssets.get(canonical);
+        if (existingHash === asset.hash) {
+          // Target already has identical content, skip
+          continue;
+        }
+      }
+
+      const targetPath = `${def.root}/${canonical}`;
 
       plan.push({
         asset,
-        targetClient: clientName as any,
+        targetClient: clientName as AgentClientName,
         targetPath,
-        targetRelativePath: asset.canonicalPath ?? asset.relativePath,
-        action: "create",
+        targetRelativePath: canonical,
+        action: targetAssets?.has(canonical) ? "update" : "create",
       });
     }
   }
@@ -821,12 +848,13 @@ async function reviewMcpServers(
       mcpServers: mergedServers,
     };
 
+    const serializedContent = serializeMcpConfig(finalConfig, format);
     filteredMcpEntries.push({
       ...firstEntry,
       asset: {
         ...firstEntry.asset,
-        content: serializeMcpConfig(finalConfig, format),
-        hash: "merged",
+        content: serializedContent,
+        hash: hashContent(serializedContent),
       },
     });
   }
@@ -887,7 +915,9 @@ async function validateAndWarnMcp(
       const existingContent = await readFileSafe(newEntry.targetPath);
       if (!existingContent) continue;
 
-      const existingConfig = parseMcpConfig(existingContent, format);
+      // Use target file's format, not source
+      const targetFormat = detectMcpFormat(newEntry.targetPath);
+      const existingConfig = parseMcpConfig(existingContent, targetFormat);
       if (!existingConfig) continue;
 
       const removed = findRemovedServers(newConfig, existingConfig);
