@@ -1,0 +1,89 @@
+import { Command } from 'commander';
+import type { AgentClientName, AssetType, SyncOptions } from '../types/index.js';
+
+const CLIENT_CHOICES: AgentClientName[] = [
+  'project',
+  'codex',
+  'claude',
+  'cursor',
+  'opencode',
+  'windsurf',
+  'cline',
+  'roo',
+  'gemini',
+  'vscode',
+  'antigravity',
+  'goose',
+];
+const TYPE_CHOICES: AssetType[] = ['agents', 'commands', 'rules', 'skills', 'mcp'];
+
+type Mode = SyncOptions['mode'];
+
+export function parseCliArgs(argv: string[]): SyncOptions {
+  const program = new Command();
+
+  program
+    .name('sync-agents')
+    .description('Synchronize agent instructions across AI coding assistants')
+    .option('-m, --mode <mode>', 'sync mode: interactive | merge | source', 'interactive')
+    .option('-s, --source <client>', 'source client when using --mode source')
+    .option('-c, --clients <list>', 'comma-separated list of clients to target')
+    .option('-t, --types <list>', 'comma-separated list of asset types to sync')
+    .option('--priority <list>', 'client priority order (highest first)')
+    .option('--export-cursor-history', 'aggregate Cursor UI rules into a local file before syncing')
+    .option(
+      '--cursor-history-dest <file>',
+      'destination file for exported Cursor history (default: ~/.cursor/AGENTS.history.md)'
+    )
+    .option('--dry-run', 'preview without writing changes')
+    .option('-v, --verbose', 'verbose output');
+
+  program.parse(argv);
+
+  const opts = program.opts();
+
+  const mode = normalizeMode(opts.mode);
+  const selectedClients = opts.clients ? parseList(opts.clients, CLIENT_CHOICES) : undefined;
+  const types = opts.types ? parseList(opts.types, TYPE_CHOICES) : undefined;
+  const priority = opts.priority ? parseList(opts.priority, CLIENT_CHOICES) : undefined;
+
+  if (mode === 'source' && !opts.source) {
+    throw new Error('Source mode requires --source <client>');
+  }
+
+  if (opts.source && !CLIENT_CHOICES.includes(opts.source)) {
+    throw new Error(`Unknown source client: ${opts.source}`);
+  }
+
+  return {
+    mode,
+    source: opts.source,
+    clients: selectedClients,
+    types,
+    dryRun: Boolean(opts.dryRun),
+    verbose: Boolean(opts.verbose),
+    priority,
+    exportCursorHistory: Boolean(opts.exportCursorHistory),
+    cursorHistoryDest: opts.cursorHistoryDest,
+  } satisfies SyncOptions;
+}
+
+function parseList<T extends string>(value: string, allowed: readonly T[]): T[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      if (!allowed.includes(item as T)) {
+        throw new Error(`Invalid value: ${item}. Allowed: ${allowed.join(', ')}`);
+      }
+      return item as T;
+    });
+}
+
+function normalizeMode(value: string): Mode {
+  if (value === 'interactive' || value === 'merge' || value === 'source') {
+    return value;
+  }
+  throw new Error(`Unknown mode: ${value}`);
+}

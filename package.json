@@ -1,0 +1,50 @@
+{
+  "name": "sync-agents",
+  "version": "0.1.0",
+  "description": "Synchronize agent guidance (AGENTS, commands, rules, skills, MCP configs) across AI coding assistants.",
+  "type": "module",
+  "bin": {
+    "sync-agents": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint .",
+    "test": "vitest"
+  },
+  "keywords": [
+    "agents",
+    "sync",
+    "codex",
+    "claude",
+    "cursor",
+    "opencode",
+    "mcp"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "0.7.0",
+    "chalk": "5.3.0",
+    "commander": "12.1.0",
+    "fast-glob": "3.3.2",
+    "fs-extra": "11.2.0",
+    "ora": "8.0.1",
+    "picocolors": "1.0.0",
+    "semver": "7.6.3",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "11.0.4",
+    "@types/node": "22.10.1",
+    "@types/semver": "7.5.8",
+    "eslint": "9.13.0",
+    "eslint-config-prettier": "9.1.0",
+    "eslint-plugin-import": "2.31.0",
+    "prettier": "3.2.5",
+    "tsx": "4.19.0",
+    "typescript": "5.6.3",
+    "vitest": "2.1.3"
+  }
+}
