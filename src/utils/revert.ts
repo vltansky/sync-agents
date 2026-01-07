@@ -1,7 +1,5 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import chalk from "chalk";
-import { fileExists, readFileSafe } from "./fs.js";
+import { fileExists, readFileSafe, writeFileSafe } from "./fs.js";
 import { readManifest } from "./manifest.js";
 
 export interface BackupInfo {
@@ -12,7 +10,6 @@ export interface BackupInfo {
 
 export interface RevertResult {
   restored: string[];
-  skipped: string[];
   failed: string[];
 }
 
@@ -21,13 +18,14 @@ export interface RevertResult {
  */
 export async function listBackups(): Promise<BackupInfo[]> {
   const manifest = await readManifest();
-  const backups: BackupInfo[] = [];
 
-  for (const filePath of manifest.generatedFiles) {
-    const backupPath = `${filePath}.bak`;
-    const exists = await fileExists(backupPath);
-    backups.push({ originalPath: filePath, backupPath, exists });
-  }
+  const backups = await Promise.all(
+    manifest.generatedFiles.map(async (filePath) => {
+      const backupPath = `${filePath}.bak`;
+      const exists = await fileExists(backupPath);
+      return { originalPath: filePath, backupPath, exists };
+    }),
+  );
 
   return backups;
 }
@@ -48,7 +46,6 @@ export async function performRevert(
 ): Promise<RevertResult> {
   const result: RevertResult = {
     restored: [],
-    skipped: [],
     failed: [],
   };
 
@@ -83,16 +80,13 @@ export async function performRevert(
     }
 
     try {
-      // Read backup content
       const backupContent = await readFileSafe(backup.backupPath);
       if (!backupContent) {
         result.failed.push(backup.originalPath);
         continue;
       }
 
-      // Write to original location
-      await fs.mkdir(path.dirname(backup.originalPath), { recursive: true });
-      await fs.writeFile(backup.originalPath, backupContent, "utf8");
+      await writeFileSafe(backup.originalPath, backupContent);
 
       if (options.verbose) {
         console.log(chalk.dim(`  restored: ${backup.originalPath}`));

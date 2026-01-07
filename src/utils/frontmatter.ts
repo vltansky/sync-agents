@@ -32,7 +32,9 @@ export function parseFrontmatter(content: string): ParsedMarkdown {
 
 /**
  * Simple YAML parser for frontmatter.
- * Handles scalar values, arrays, and simple objects.
+ * Handles: scalar values, arrays, simple nested objects.
+ * Does NOT handle: multiline strings, anchors/aliases, flow syntax, deeply nested structures.
+ * Intentionally minimal to avoid external deps for simple frontmatter use cases.
  */
 function parseSimpleYaml(yaml: string): FrontmatterData {
   const result: FrontmatterData = {};
@@ -133,17 +135,6 @@ function parseYamlValue(value: string): unknown {
   if (!isNaN(num) && value !== "") return num;
 
   return value;
-}
-
-/**
- * Serialize a tools object to YAML format.
- */
-function serializeToolsObject(tools: Record<string, boolean>): string {
-  const lines: string[] = ["tools:"];
-  for (const [name, enabled] of Object.entries(tools)) {
-    lines.push(`  ${name}: ${enabled}`);
-  }
-  return lines.join("\n");
 }
 
 /**
@@ -252,11 +243,24 @@ export function transformForOpenCode(content: string): string {
 }
 
 /**
- * Client-specific frontmatter keys that should be stripped when syncing to other clients.
- * These keys are specific to certain clients and meaningless/confusing in others.
+ * Client-specific frontmatter keys stripped when syncing to incompatible clients.
  */
 const CURSOR_ONLY_KEYS = ["argument-hint", "model"];
 const CLAUDE_ONLY_KEYS = ["allowed_tools"];
+
+/** Clients that DON'T understand Cursor command frontmatter */
+const STRIP_CURSOR_KEYS_FOR: Set<AgentClientName> = new Set([
+  "claude",
+  "codex",
+]);
+
+/** Clients that DON'T understand Claude command frontmatter */
+const STRIP_CLAUDE_KEYS_FOR: Set<AgentClientName> = new Set([
+  "cursor",
+  "windsurf",
+  "cline",
+  "roo",
+]);
 
 /**
  * Strip client-specific frontmatter keys from command content.
@@ -273,7 +277,10 @@ function stripClientSpecificFrontmatter(
   let modified = false;
 
   for (const key of keysToStrip) {
-    // Match the key and its value (handles multiline for arrays)
+    // Regex breakdown:
+    // ^key:.*              - match "key:" and rest of line
+    // (?:\n[ \t]+-.*)*     - plus any following array items (lines starting with -)
+    // (?:\n[ \t]+\w+:.*)*  - plus any nested key: value pairs
     const keyRegex = new RegExp(
       `^${key}:.*(?:\\n(?:[ \\t]+-.*|[ \\t]+\\w+:.*))*`,
       "gm",
@@ -310,17 +317,13 @@ export function transformContentForClient(
     return transformForOpenCode(content);
   }
 
-  // Strip Cursor-specific frontmatter when syncing commands to Claude/Codex
-  if (assetType === "commands" && ["claude", "codex"].includes(targetClient)) {
-    return stripClientSpecificFrontmatter(content, CURSOR_ONLY_KEYS);
-  }
-
-  // Strip Claude-specific frontmatter when syncing commands to Cursor-like clients
-  if (
-    assetType === "commands" &&
-    ["cursor", "windsurf", "cline", "roo"].includes(targetClient)
-  ) {
-    return stripClientSpecificFrontmatter(content, CLAUDE_ONLY_KEYS);
+  if (assetType === "commands") {
+    if (STRIP_CURSOR_KEYS_FOR.has(targetClient)) {
+      return stripClientSpecificFrontmatter(content, CURSOR_ONLY_KEYS);
+    }
+    if (STRIP_CLAUDE_KEYS_FOR.has(targetClient)) {
+      return stripClientSpecificFrontmatter(content, CLAUDE_ONLY_KEYS);
+    }
   }
 
   return content;
