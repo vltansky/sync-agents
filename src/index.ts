@@ -10,6 +10,10 @@ import { buildSyncPlan } from "./utils/plan.js";
 import { fileExists } from "./utils/fs.js";
 import type { ClientDefinition } from "./types/index.js";
 import { exportCursorHistory } from "./utils/cursorHistory.js";
+import { performReset } from "./utils/reset.js";
+import { postApplyCleanup } from "./utils/apply.js";
+import { updateGitignore } from "./utils/gitignore.js";
+import { performRevert, showBackupStatus } from "./utils/revert.js";
 
 function printApplyResult(result: ApplyResult, verbose: boolean): void {
   const parts: string[] = [];
@@ -47,6 +51,30 @@ function printApplyResult(result: ApplyResult, verbose: boolean): void {
 
 async function main() {
   const options = parseCliArgs(process.argv);
+  const projectRoot = process.cwd();
+
+  // Handle reset command
+  if (options.reset) {
+    await performReset(projectRoot, {
+      dryRun: options.dryRun,
+      verbose: options.verbose,
+    });
+    return;
+  }
+
+  // Handle revert commands
+  if (options.revertList) {
+    await showBackupStatus();
+    return;
+  }
+
+  if (options.revert) {
+    await performRevert({
+      dryRun: options.dryRun,
+      verbose: options.verbose,
+    });
+    return;
+  }
 
   if (options.exportCursorHistory) {
     await exportCursorHistory({
@@ -54,8 +82,6 @@ async function main() {
       verbose: options.verbose,
     });
   }
-
-  const projectRoot = process.cwd();
   const defs = buildClientDefinitions(projectRoot);
 
   if (options.mode === "interactive") {
@@ -70,6 +96,15 @@ async function main() {
     };
     const applyResult = await applyPlan(result.entries, applyOptions);
     printApplyResult(applyResult, options.verbose ?? false);
+
+    // Post-apply: update manifest, prune stale files, update gitignore
+    if (!options.dryRun && applyResult.applied > 0) {
+      const appliedPaths = result.entries
+        .filter((e) => e.action !== "skip")
+        .map((e) => e.targetPath);
+      await postApplyCleanup(appliedPaths, options.verbose);
+      await updateGitignore(projectRoot, appliedPaths);
+    }
     return;
   }
 
@@ -102,6 +137,15 @@ async function main() {
   const { plan } = buildSyncPlan(assets, available, options);
   const applyResult = await applyPlan(plan, options);
   printApplyResult(applyResult, options.verbose ?? false);
+
+  // Post-apply: update manifest, prune stale files, update gitignore
+  if (!options.dryRun && applyResult.applied > 0) {
+    const appliedPaths = plan
+      .filter((e) => e.action !== "skip")
+      .map((e) => e.targetPath);
+    await postApplyCleanup(appliedPaths, options.verbose);
+    await updateGitignore(projectRoot, appliedPaths);
+  }
 }
 
 function resolveClientsToCheck(

@@ -23,10 +23,25 @@ export function canonicalizeRelativePath(
       return AGENTS_FILE;
     }
   }
+  // Codex stores commands in prompts/ - canonicalize to commands/ to match other clients
   if (type === "commands" && client === "codex") {
-    return toPromptPath(normalized);
+    return fromPromptPath(normalized);
   }
   return normalized;
+}
+
+/** Convert Codex prompts/ path to canonical commands/ path */
+function fromPromptPath(relativePath: string): string {
+  const segments = normalizeRelativePath(relativePath)
+    .split("/")
+    .filter(Boolean);
+  if (segments.length === 0) {
+    return "commands/command.md";
+  }
+  // Strip "prompts" prefix if present
+  const nameSegments = segments.slice(segments[0] === "prompts" ? 1 : 0);
+  const fileName = nameSegments.join("/");
+  return normalizeRelativePath(path.posix.join("commands", fileName));
 }
 
 export function denormalizeRelativePath(

@@ -78,6 +78,42 @@ describe("parseMcpConfig", () => {
     expect(result?.mcpServers?.filesystem?.command).toBe("npx");
   });
 
+  it("parses JSON with URLs containing // without breaking", () => {
+    const json = `{
+      "mcpServers": {
+        "remote-server": {
+          "url": "https://example.com/mcp?param=value",
+          "type": "http"
+        },
+        "another": {
+          "url": "http://localhost:3000/api"
+        }
+      }
+    }`;
+
+    const result = parseMcpConfig(json, "json");
+    expect(result?.mcpServers?.["remote-server"]).toBeDefined();
+    expect(result?.mcpServers?.["remote-server"]?.url).toBe(
+      "https://example.com/mcp?param=value",
+    );
+    expect(result?.mcpServers?.another?.url).toBe("http://localhost:3000/api");
+  });
+
+  it("handles JSONC with URLs and comments mixed", () => {
+    const jsonc = `{
+      // MCP servers config
+      "mcpServers": {
+        "figma": {
+          "url": "https://mcp.figma.com/mcp", // Figma MCP endpoint
+          "type": "http"
+        }
+      }
+    }`;
+
+    const result = parseMcpConfig(jsonc, "jsonc");
+    expect(result?.mcpServers?.figma?.url).toBe("https://mcp.figma.com/mcp");
+  });
+
   it("parses TOML config", () => {
     const toml = `[mcpServers.filesystem]
 command = "npx"

@@ -15,6 +15,19 @@ import {
 } from "./paths.js";
 import { validatePathSafe } from "./validation.js";
 
+/**
+ * Check if target client requires content transformation for this asset type.
+ * When transformation is needed, we can't reliably compare source/target hashes
+ * as they'll differ even if content is semantically up-to-date.
+ */
+function requiresTransformation(
+  targetClient: AgentClientName,
+  assetType: AssetType,
+): boolean {
+  // OpenCode requires frontmatter transformation for agents
+  return targetClient === "opencode" && assetType === "agents";
+}
+
 export interface PlanResult {
   plan: SyncPlanEntry[];
   desiredAssets: Map<string, AssetContent>;
@@ -86,7 +99,9 @@ export function buildSyncPlan(
       const targetPath = buildTargetAbsolutePath(def.root, targetRelative);
       validatePathSafe(def.root, targetPath);
       const existing = existingMap.get(def.name)?.get(key);
-      if (existing && existing.hash === desired.hash) {
+      // Don't skip if target requires transformation - let apply phase compare transformed content
+      const needsTransform = requiresTransformation(def.name, desired.type);
+      if (existing && existing.hash === desired.hash && !needsTransform) {
         plan.push({
           asset: desired,
           targetClient: def.name,

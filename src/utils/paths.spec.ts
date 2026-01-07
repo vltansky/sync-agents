@@ -47,10 +47,10 @@ describe("path utilities", () => {
       );
     });
 
-    it("should convert commands to prompts for codex", () => {
+    it("should convert codex prompts/ to canonical commands/", () => {
       expect(
-        canonicalizeRelativePath("codex", "commands", "commands/test.md"),
-      ).toBe("prompts/test.md");
+        canonicalizeRelativePath("codex", "commands", "prompts/test.md"),
+      ).toBe("commands/test.md");
     });
 
     it("should not modify paths for other clients", () => {

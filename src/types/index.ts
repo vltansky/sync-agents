@@ -11,7 +11,9 @@ export type AgentClientName =
   | "gemini"
   | "vscode"
   | "antigravity"
-  | "goose";
+  | "goose"
+  | "mcphub"
+  | "cherrystudio";
 
 export type AssetType =
   | "agents"
@@ -72,6 +74,9 @@ export interface SyncOptions {
   exportCursorHistory?: boolean;
   cursorHistoryDest?: string;
   link?: boolean;
+  reset?: boolean;
+  revert?: boolean;
+  revertList?: boolean;
 }
 
 export interface SyncPlanEntry {

@@ -294,14 +294,64 @@ export function mergeMcpAssets(assets: AssetContent[]): string | null {
 }
 
 /**
- * Parse JSON with comments (simple implementation)
+ * Parse JSON with comments (JSONC format)
+ * Handles // and /* comments while preserving URLs inside strings
  */
 function parseJsonWithComments(content: string): McpConfig {
-  // Remove single-line comments
-  let cleaned = content.replace(/\/\/.*$/gm, "");
-  // Remove multi-line comments
-  cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, "");
-  return JSON.parse(cleaned);
+  // Remove comments while preserving string contents
+  // Strategy: tokenize strings first, then remove comments from non-string parts
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < content.length) {
+    const char = content[i];
+
+    // Handle string literals - copy them verbatim
+    if (char === '"') {
+      const start = i;
+      i++; // skip opening quote
+      while (i < content.length) {
+        if (content[i] === "\\" && i + 1 < content.length) {
+          i += 2; // skip escaped char
+        } else if (content[i] === '"') {
+          i++; // skip closing quote
+          break;
+        } else {
+          i++;
+        }
+      }
+      result.push(content.slice(start, i));
+      continue;
+    }
+
+    // Handle single-line comments
+    if (char === "/" && content[i + 1] === "/") {
+      // Skip until end of line
+      while (i < content.length && content[i] !== "\n") {
+        i++;
+      }
+      continue;
+    }
+
+    // Handle multi-line comments
+    if (char === "/" && content[i + 1] === "*") {
+      i += 2; // skip /*
+      while (
+        i < content.length &&
+        !(content[i] === "*" && content[i + 1] === "/")
+      ) {
+        i++;
+      }
+      i += 2; // skip */
+      continue;
+    }
+
+    // Regular character
+    result.push(char);
+    i++;
+  }
+
+  return JSON.parse(result.join(""));
 }
 
 /**

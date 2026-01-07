@@ -3,6 +3,7 @@ import {
   outro,
   select,
   multiselect,
+  groupMultiselect,
   confirm,
   spinner,
   note,
@@ -126,7 +127,9 @@ export async function runInteractiveFlow(
   s.stop("Scan complete.");
 
   const projectAssets =
-    scanResults.find((r) => r.client === "project")?.assets ?? [];
+    scope === "global"
+      ? []
+      : scanResults.find((r) => r.client === "project")?.assets ?? [];
   const globalAssets = scanResults
     .filter((r) => r.client !== "project" && r.found)
     .flatMap((r) => r.assets);
@@ -142,16 +145,18 @@ export async function runInteractiveFlow(
     return { proceed: false, entries: [], scope, direction: "sync" };
   }
 
-  // Detect conflicts based on direction
+  // Detect conflicts based on direction and scope
   // Push: project is authoritative, only detect conflicts between global clients
   // Pull: project is target, detect conflicts between global clients
-  // Sync: detect conflicts between all
+  // Sync: detect conflicts between all (but only globalAssets if scope is global)
   const assetsForConflictDetection =
     resolvedDirection === "push"
       ? globalAssets
       : resolvedDirection === "pull"
         ? globalAssets
-        : allAssets;
+        : scope === "global"
+          ? globalAssets
+          : allAssets;
 
   const conflicts = detectConflicts(assetsForConflictDetection);
 
@@ -197,8 +202,8 @@ export async function runInteractiveFlow(
     return { proceed: false, entries: [], scope, direction: resolvedDirection };
   }
 
-  // Review MCP servers before applying
-  const reviewedPlan = await reviewMcpServers(plan);
+  // Review all assets in a unified flow
+  const reviewedPlan = await reviewAllAssets(plan);
   if (typeof reviewedPlan === "symbol") {
     outro("Cancelled.");
     return { proceed: false, entries: [], scope, direction: resolvedDirection };
@@ -649,23 +654,152 @@ interface ServerVersion {
 }
 
 /**
- * Extract all MCP servers from plan entries and let user select which to include
- * Shows diffs for servers that exist in multiple clients with different configs
- * Returns the filtered plan with only selected MCP servers
+ * Asset version from a specific client (for commands/agents)
  */
-async function reviewMcpServers(
+interface AssetVersion {
+  client: string;
+  asset: AssetContent;
+  entry: SyncPlanEntry;
+}
+
+/**
+ * Resolved asset ready for selection
+ */
+interface ResolvedAsset {
+  name: string;
+  type: AssetType;
+  version: AssetVersion;
+  label: string;
+}
+
+const ASSET_TYPE_LABELS: Record<AssetType, string> = {
+  mcp: "MCP Servers",
+  commands: "Commands",
+  agents: "Agents",
+  rules: "Rules",
+  skills: "Skills",
+  prompts: "Prompts",
+};
+
+/**
+ * Unified review flow for all asset types
+ * 1. Resolve conflicts (ask user to pick version when same asset differs)
+ * 2. Show single grouped multiselect for all assets
+ */
+async function reviewAllAssets(
   plan: SyncPlanEntry[],
 ): Promise<SyncPlanEntry[] | symbol> {
-  // Separate MCP and non-MCP entries
-  const mcpEntries = plan.filter((e) => e.asset.type === "mcp");
-  const nonMcpEntries = plan.filter((e) => e.asset.type !== "mcp");
+  if (plan.length === 0) return plan;
 
-  if (mcpEntries.length === 0) {
-    return plan;
+  // Separate MCP from other assets (MCP needs special handling)
+  const mcpEntries = plan.filter((e) => e.asset.type === "mcp");
+  const otherEntries = plan.filter((e) => e.asset.type !== "mcp");
+
+  // Step 1: Process MCP servers
+  const mcpResult = await resolveMcpConflicts(mcpEntries);
+  if (typeof mcpResult === "symbol") return mcpResult;
+
+  // Step 2: Process other assets and resolve conflicts
+  const otherResult = await resolveAssetConflicts(otherEntries);
+  if (typeof otherResult === "symbol") return otherResult;
+
+  const allResolved = [...mcpResult.resolved, ...otherResult.resolved];
+  const mcpServerChoices = mcpResult.serverChoices;
+
+  // If nothing to select, return early
+  if (allResolved.length === 0) {
+    return [];
   }
 
-  // Collect all servers grouped by name, tracking which client they came from
+  // If only one asset total and no conflicts were resolved, skip selection
+  if (
+    allResolved.length === 1 &&
+    !mcpResult.hadConflicts &&
+    !otherResult.hadConflicts
+  ) {
+    return buildFinalPlan(
+      allResolved,
+      mcpServerChoices,
+      mcpEntries,
+      otherEntries,
+    );
+  }
+
+  // Step 3: Show grouped multiselect for all assets
+  const groupedOptions: Record<
+    string,
+    { value: string; label: string; hint?: string }[]
+  > = {};
+
+  for (const resolved of allResolved) {
+    const groupKey = ASSET_TYPE_LABELS[resolved.type];
+    if (!groupedOptions[groupKey]) {
+      groupedOptions[groupKey] = [];
+    }
+    groupedOptions[groupKey].push({
+      value: `${resolved.type}::${resolved.name}`,
+      label: resolved.name,
+      hint: resolved.label,
+    });
+  }
+
+  // Sort options within each group
+  for (const group of Object.values(groupedOptions)) {
+    group.sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  console.log();
+  const selected = await groupMultiselect({
+    message: "Select assets to sync:",
+    options: groupedOptions,
+    initialValues: allResolved.map((r) => `${r.type}::${r.name}`),
+  });
+
+  if (typeof selected === "symbol") return selected;
+
+  const selectedSet = new Set(selected as string[]);
+
+  // Filter resolved assets to only selected ones
+  const selectedResolved = allResolved.filter((r) =>
+    selectedSet.has(`${r.type}::${r.name}`),
+  );
+
+  if (selectedResolved.length === 0) {
+    return [];
+  }
+
+  return buildFinalPlan(
+    selectedResolved,
+    mcpServerChoices,
+    mcpEntries,
+    otherEntries,
+  );
+}
+
+/**
+ * Resolve MCP server conflicts and prepare for selection
+ */
+async function resolveMcpConflicts(
+  mcpEntries: SyncPlanEntry[],
+): Promise<
+  | {
+      resolved: ResolvedAsset[];
+      serverChoices: Map<string, ServerVersion>;
+      hadConflicts: boolean;
+    }
+  | symbol
+> {
+  const resolved: ResolvedAsset[] = [];
+  const serverChoices = new Map<string, ServerVersion>();
+  let hadConflicts = false;
+
+  if (mcpEntries.length === 0) {
+    return { resolved, serverChoices, hadConflicts };
+  }
+
+  // Collect servers by name
   const serverVersions = new Map<string, ServerVersion[]>();
+  const seenServerClient = new Set<string>();
 
   for (const entry of mcpEntries) {
     const format = detectMcpFormat(entry.asset.path);
@@ -675,6 +809,10 @@ async function reviewMcpServers(
     for (const [serverName, serverConfig] of Object.entries(
       config.mcpServers,
     )) {
+      const key = `${serverName}::${entry.asset.client}`;
+      if (seenServerClient.has(key)) continue;
+      seenServerClient.add(key);
+
       const versions = serverVersions.get(serverName) ?? [];
       versions.push({
         client: entry.asset.client,
@@ -687,31 +825,24 @@ async function reviewMcpServers(
     }
   }
 
-  if (serverVersions.size === 0) {
-    return plan;
-  }
-
-  console.log();
-  console.log(
-    chalk.bold(`Found ${serverVersions.size} MCP server(s) to sync:`),
-  );
-
-  // Build selection options, showing diffs for servers with multiple versions
-  const serverChoices: Map<string, ServerVersion> = new Map();
-  const serversToInclude = new Set<string>();
-
+  // Process each server
   for (const [serverName, versions] of serverVersions.entries()) {
     if (versions.length === 1) {
-      // Single version - just show server name with env summary
       const version = versions[0];
       const envDisplay = formatEnvForDisplay(version.config.env);
-      console.log(
-        `  ${chalk.cyan(serverName)} ${chalk.gray(`(${version.client})`)} - ${chalk.dim(envDisplay)}`,
-      );
       serverChoices.set(serverName, version);
-      serversToInclude.add(serverName);
+      resolved.push({
+        name: serverName,
+        type: "mcp",
+        version: {
+          client: version.client,
+          asset: version.entry.asset,
+          entry: version.entry,
+        },
+        label: `${version.client} - ${envDisplay}`,
+      });
     } else {
-      // Multiple versions - check if they differ
+      // Check if versions differ
       const first = versions[0];
       let hasDifferences = false;
 
@@ -727,43 +858,32 @@ async function reviewMcpServers(
       }
 
       if (!hasDifferences) {
-        // All versions are the same - just use first
         const envDisplay = formatEnvForDisplay(first.config.env);
-        console.log(
-          `  ${chalk.cyan(serverName)} ${chalk.gray(`(${versions.map((v) => v.client).join(", ")})`)} - ${chalk.dim(envDisplay)}`,
-        );
         serverChoices.set(serverName, first);
-        serversToInclude.add(serverName);
+        resolved.push({
+          name: serverName,
+          type: "mcp",
+          version: {
+            client: first.client,
+            asset: first.entry.asset,
+            entry: first.entry,
+          },
+          label: `${versions.map((v) => v.client).join(", ")} - ${envDisplay}`,
+        });
       } else {
-        // Versions differ - need user to pick
+        hadConflicts = true;
+        // Show conflict and ask user
         console.log();
         console.log(
-          chalk.yellow(`  ${serverName} has different configs across clients:`),
+          chalk.yellow(`MCP server "${serverName}" differs across clients:`),
         );
-
         for (const version of versions) {
           const envDisplay = formatEnvForDisplay(version.config.env);
           console.log(
-            `    ${chalk.gray(version.client)}: ${version.config.command ?? "?"} - ${chalk.dim(envDisplay)}`,
+            `  ${chalk.gray(version.client)}: ${version.config.command ?? "?"} - ${chalk.dim(envDisplay)}`,
           );
         }
 
-        // Show specific differences
-        for (let i = 1; i < versions.length; i++) {
-          const comparison = compareServerConfigs(
-            first.config,
-            versions[i].config,
-          );
-          if (!comparison.same) {
-            console.log(
-              chalk.dim(
-                `    Diff (${first.client} vs ${versions[i].client}): ${comparison.differences.join("; ")}`,
-              ),
-            );
-          }
-        }
-
-        // Let user pick which version
         const versionChoice = await select({
           message: `Which "${serverName}" config to use?`,
           options: [
@@ -772,108 +892,249 @@ async function reviewMcpServers(
               label: `${v.client} (${v.config.command ?? "?"})`,
               hint: formatEnvForDisplay(v.config.env),
             })),
-            {
-              value: "__skip__",
-              label: "Skip this server",
-            },
+            { value: "__skip__", label: "Skip this server" },
           ],
         });
 
-        if (typeof versionChoice === "symbol") {
-          return versionChoice;
-        }
+        if (typeof versionChoice === "symbol") return versionChoice;
 
         if (versionChoice !== "__skip__") {
           const selected = versions.find((v) => v.client === versionChoice);
           if (selected) {
+            const envDisplay = formatEnvForDisplay(selected.config.env);
             serverChoices.set(serverName, selected);
-            serversToInclude.add(serverName);
+            resolved.push({
+              name: serverName,
+              type: "mcp",
+              version: {
+                client: selected.client,
+                asset: selected.entry.asset,
+                entry: selected.entry,
+              },
+              label: `${selected.client} - ${envDisplay}`,
+            });
           }
         }
       }
     }
   }
 
-  console.log();
+  return { resolved, serverChoices, hadConflicts };
+}
 
-  // Let user deselect servers they don't want
-  const selectedServers = await multiselect({
-    message: "Select MCP servers to include:",
-    options: Array.from(serversToInclude)
-      .sort()
-      .map((name) => ({
-        value: name,
-        label: name,
-      })),
-    initialValues: Array.from(serversToInclude),
-  });
+/**
+ * Resolve conflicts for non-MCP assets
+ */
+async function resolveAssetConflicts(
+  entries: SyncPlanEntry[],
+): Promise<{ resolved: ResolvedAsset[]; hadConflicts: boolean } | symbol> {
+  const resolved: ResolvedAsset[] = [];
+  let hadConflicts = false;
 
-  if (typeof selectedServers === "symbol") {
-    return selectedServers;
+  if (entries.length === 0) {
+    return { resolved, hadConflicts };
   }
 
-  const selectedSet = new Set(selectedServers);
+  // Group by type and name
+  const assetVersions = new Map<string, AssetVersion[]>();
+  const seenAssetClient = new Set<string>();
 
-  // If no servers selected, remove all MCP entries
-  if (selectedSet.size === 0) {
-    return nonMcpEntries;
+  for (const entry of entries) {
+    const assetName = entry.asset.name;
+    const key = `${entry.asset.type}::${assetName}::${entry.asset.client}`;
+    if (seenAssetClient.has(key)) continue;
+    seenAssetClient.add(key);
+
+    const mapKey = `${entry.asset.type}::${assetName}`;
+    const versions = assetVersions.get(mapKey) ?? [];
+    versions.push({
+      client: entry.asset.client,
+      asset: entry.asset,
+      entry,
+    });
+    assetVersions.set(mapKey, versions);
   }
 
-  // Build final MCP config per target client
-  const targetFormats = new Map<string, McpFormat>();
-  for (const entry of mcpEntries) {
-    const format = detectMcpFormat(entry.asset.path);
-    targetFormats.set(entry.targetClient, format);
-  }
+  // Process each asset
+  for (const [mapKey, versions] of assetVersions.entries()) {
+    const [assetType, ...nameParts] = mapKey.split("::");
+    const assetName = nameParts.join("::");
+    const type = assetType as AssetType;
 
-  // Group entries by target client to build one config per target
-  const entriesByTarget = new Map<string, SyncPlanEntry[]>();
-  for (const entry of mcpEntries) {
-    const entries = entriesByTarget.get(entry.targetClient) ?? [];
-    entries.push(entry);
-    entriesByTarget.set(entry.targetClient, entries);
-  }
+    if (versions.length === 1) {
+      const version = versions[0];
+      const sizeKb = (version.asset.content.length / 1024).toFixed(1);
+      resolved.push({
+        name: assetName,
+        type,
+        version,
+        label: `${version.client} (${sizeKb}kb)`,
+      });
+    } else {
+      // Check if versions differ
+      const first = versions[0];
+      let hasDifferences = false;
 
-  const filteredMcpEntries: SyncPlanEntry[] = [];
+      for (let i = 1; i < versions.length; i++) {
+        if (versions[i].asset.hash !== first.asset.hash) {
+          hasDifferences = true;
+          break;
+        }
+      }
 
-  for (const [targetClient, entries] of entriesByTarget.entries()) {
-    // Build merged config with selected servers only
-    const mergedServers: Record<string, McpServerConfig> = {};
+      if (!hasDifferences) {
+        const sizeKb = (first.asset.content.length / 1024).toFixed(1);
+        resolved.push({
+          name: assetName,
+          type,
+          version: first,
+          label: `${versions.map((v) => v.client).join(", ")} (${sizeKb}kb)`,
+        });
+      } else {
+        hadConflicts = true;
+        // Show conflict
+        console.log();
+        console.log(
+          chalk.yellow(`"${assetName}" (${type}) differs across clients:`),
+        );
+        for (const version of versions) {
+          const sizeKb = (version.asset.content.length / 1024).toFixed(1);
+          const relTime = formatRelativeTime(version.asset.modifiedAt);
+          console.log(
+            `  ${chalk.gray(version.client)}: ${sizeKb}kb, ${relTime}`,
+          );
+        }
 
-    for (const serverName of selectedSet) {
-      const choice = serverChoices.get(serverName);
-      if (choice) {
-        mergedServers[serverName] = choice.config;
+        const similarity = calculateSimilarity(
+          first.asset.content,
+          versions[1].asset.content,
+        );
+        console.log(
+          chalk.dim(
+            `  Similarity: ${Math.round(similarity * 100)}% ${getSimilarityLabel(similarity)}`,
+          ),
+        );
+
+        const versionChoice = await select({
+          message: `Which "${assetName}" to use?`,
+          options: [
+            ...versions.map((v) => ({
+              value: v.client,
+              label: `${v.client} (${(v.asset.content.length / 1024).toFixed(1)}kb)`,
+              hint: formatRelativeTime(v.asset.modifiedAt),
+            })),
+            { value: "__skip__", label: "Skip" },
+          ],
+        });
+
+        if (typeof versionChoice === "symbol") return versionChoice;
+
+        if (versionChoice !== "__skip__") {
+          const selected = versions.find((v) => v.client === versionChoice);
+          if (selected) {
+            const sizeKb = (selected.asset.content.length / 1024).toFixed(1);
+            resolved.push({
+              name: assetName,
+              type,
+              version: selected,
+              label: `${selected.client} (${sizeKb}kb)`,
+            });
+          }
+        }
       }
     }
-
-    if (Object.keys(mergedServers).length === 0) continue;
-
-    const format = targetFormats.get(targetClient) ?? "json";
-    const firstEntry = entries[0];
-
-    // Preserve other top-level keys from first entry's config
-    const baseConfig = parseMcpConfig(firstEntry.asset.content, format) ?? {};
-    const finalConfig: McpConfig = {
-      ...baseConfig,
-      mcpServers: mergedServers,
-    };
-
-    const serializedContent = serializeMcpConfig(finalConfig, format);
-    filteredMcpEntries.push({
-      ...firstEntry,
-      asset: {
-        ...firstEntry.asset,
-        content: serializedContent,
-        hash: hashContent(serializedContent),
-      },
-    });
   }
 
-  // Validate merged configs and check for removals
-  await validateAndWarnMcp(filteredMcpEntries, mcpEntries);
+  return { resolved, hadConflicts };
+}
 
-  return [...nonMcpEntries, ...filteredMcpEntries];
+/**
+ * Build final plan from selected assets
+ */
+function buildFinalPlan(
+  selectedResolved: ResolvedAsset[],
+  mcpServerChoices: Map<string, ServerVersion>,
+  mcpEntries: SyncPlanEntry[],
+  otherEntries: SyncPlanEntry[],
+): SyncPlanEntry[] {
+  const finalPlan: SyncPlanEntry[] = [];
+
+  // Handle MCP entries specially - need to rebuild config with selected servers
+  const selectedMcpServers = new Set(
+    selectedResolved.filter((r) => r.type === "mcp").map((r) => r.name),
+  );
+
+  if (selectedMcpServers.size > 0) {
+    // Group MCP entries by target client
+    const mcpByTarget = new Map<string, SyncPlanEntry[]>();
+    for (const entry of mcpEntries) {
+      const entries = mcpByTarget.get(entry.targetClient) ?? [];
+      entries.push(entry);
+      mcpByTarget.set(entry.targetClient, entries);
+    }
+
+    for (const [targetClient, entries] of mcpByTarget.entries()) {
+      const mergedServers: Record<string, McpServerConfig> = {};
+
+      for (const serverName of selectedMcpServers) {
+        const choice = mcpServerChoices.get(serverName);
+        if (choice) {
+          mergedServers[serverName] = choice.config;
+        }
+      }
+
+      if (Object.keys(mergedServers).length === 0) continue;
+
+      const firstEntry = entries[0];
+      const format = detectMcpFormat(firstEntry.asset.path);
+      const baseConfig = parseMcpConfig(firstEntry.asset.content, format) ?? {};
+      const finalConfig: McpConfig = {
+        ...baseConfig,
+        mcpServers: mergedServers,
+      };
+      const serializedContent = serializeMcpConfig(finalConfig, format);
+
+      finalPlan.push({
+        ...firstEntry,
+        asset: {
+          ...firstEntry.asset,
+          content: serializedContent,
+          hash: hashContent(serializedContent),
+        },
+      });
+    }
+  }
+
+  // Handle other entries
+  const selectedOther = new Map<string, ResolvedAsset>();
+  for (const r of selectedResolved) {
+    if (r.type !== "mcp") {
+      selectedOther.set(`${r.type}::${r.name}`, r);
+    }
+  }
+
+  const processedTargets = new Set<string>();
+  for (const entry of otherEntries) {
+    const key = `${entry.asset.type}::${entry.asset.name}`;
+    const resolved = selectedOther.get(key);
+    if (!resolved) continue;
+
+    const targetKey = `${key}::${entry.targetClient}`;
+    if (processedTargets.has(targetKey)) continue;
+    processedTargets.add(targetKey);
+
+    // Use resolved version's content
+    if (entry.asset.client === resolved.version.client) {
+      finalPlan.push(entry);
+    } else {
+      finalPlan.push({
+        ...entry,
+        asset: resolved.version.asset,
+      });
+    }
+  }
+
+  return finalPlan;
 }
 
 /**

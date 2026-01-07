@@ -21,6 +21,8 @@ const CLIENT_CHOICES: AgentClientName[] = [
   "vscode",
   "antigravity",
   "goose",
+  "mcphub",
+  "cherrystudio",
 ];
 const TYPE_CHOICES: AssetType[] = [
   "agents",
@@ -65,6 +67,9 @@ export function parseCliArgs(argv: string[]): SyncOptions {
     )
     .option("--dry-run", "preview without writing changes")
     .option("--link", "use symlinks instead of copying files")
+    .option("--reset", "remove all sync-agents generated files and reset")
+    .option("--revert", "restore files from backups (undo last sync)")
+    .option("--revert-list", "show available backups")
     .option("-v, --verbose", "verbose output");
 
   program.parse(argv);
@@ -111,6 +116,9 @@ export function parseCliArgs(argv: string[]): SyncOptions {
     exportCursorHistory: Boolean(opts.exportCursorHistory),
     cursorHistoryDest: opts.cursorHistoryDest,
     link: Boolean(opts.link),
+    reset: Boolean(opts.reset),
+    revert: Boolean(opts.revert),
+    revertList: Boolean(opts.revertList),
   } satisfies SyncOptions;
 }
 

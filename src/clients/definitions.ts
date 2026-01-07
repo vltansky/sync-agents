@@ -70,7 +70,7 @@ export function buildClientDefinitions(
       displayName: "Cursor",
       root: path.join(HOME, ".cursor"),
       assets: [
-        { type: "agents", patterns: ["AGENTS.md"] },
+        { type: "agents", patterns: ["AGENTS.md", "agents/**/*.md"] },
         { type: "commands", patterns: ["commands/**/*.md"] },
         { type: "rules", patterns: ["rules/**/*.md", "rules/**/*.mdc"] },
         { type: "skills", patterns: [] },
@@ -82,7 +82,7 @@ export function buildClientDefinitions(
       displayName: "OpenCode",
       root: path.join(HOME, ".opencode"),
       assets: [
-        { type: "agents", patterns: ["AGENTS.md"] },
+        { type: "agents", patterns: ["AGENTS.md", "agents/**/*.md"] },
         { type: "commands", patterns: ["commands/**/*.md"] },
         { type: "rules", patterns: ["rules/**/*.md"] },
         { type: "skills", patterns: ["skills/**/SKILL.md"] },
@@ -173,6 +173,30 @@ export function buildClientDefinitions(
         { type: "mcp", patterns: [], files: ["config.yaml", "config.yml"] },
       ],
     },
+    {
+      name: "mcphub",
+      displayName: "MCPHub",
+      root: path.join(HOME, ".config", "mcphub"),
+      assets: [
+        { type: "agents", patterns: [] },
+        { type: "commands", patterns: [] },
+        { type: "rules", patterns: [] },
+        { type: "skills", patterns: [] },
+        { type: "mcp", patterns: [], files: ["servers.json"] },
+      ],
+    },
+    {
+      name: "cherrystudio",
+      displayName: "CherryStudio",
+      root: path.join(HOME, ".config", "cherrystudio"),
+      assets: [
+        { type: "agents", patterns: [] },
+        { type: "commands", patterns: [] },
+        { type: "rules", patterns: [] },
+        { type: "skills", patterns: [] },
+        { type: "mcp", patterns: [], files: ["mcp.json"] },
+      ],
+    },
   ];
 
   return defs;
@@ -192,6 +216,8 @@ export const CLIENT_ORDER: AgentClientName[] = [
   "vscode",
   "antigravity",
   "goose",
+  "mcphub",
+  "cherrystudio",
 ];
 
 function resolveVsCodeUserDir(): string {

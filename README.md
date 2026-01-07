@@ -64,6 +64,8 @@ Exports Cursor's "Rules & Config" history to `~/.cursor/AGENTS.md`, then you can
 | `-t, --types`             | Filter asset types (`agents,commands,rules,skills,mcp,prompts`) |
 | `--priority`              | Client precedence order when merging                            |
 | `--dry-run`               | Preview without writing                                         |
+| `--link`                  | Use symlinks instead of copying files                           |
+| `--reset`                 | Remove all sync-agents generated files and reset                |
 | `-v, --verbose`           | Verbose output                                                  |
 | `--export-cursor-history` | Export Cursor UI history to `~/.cursor/AGENTS.md`               |
 | `--cursor-history-dest`   | Custom destination for Cursor history export                    |
@@ -78,20 +80,23 @@ Exports Cursor's "Rules & Config" history to `~/.cursor/AGENTS.md`, then you can
 
 ## Supported Clients
 
-| Client        | Location                                         | Notes                      |
-| ------------- | ------------------------------------------------ | -------------------------- |
-| `project`     | `./`                                             | Current working directory  |
-| `codex`       | `~/.codex`                                       |                            |
-| `claude`      | `~/.claude`                                      | `CLAUDE.md` ↔ `AGENTS.md` |
-| `cursor`      | `~/.cursor`                                      | Supports `.mdc` rules      |
-| `opencode`    | `~/.opencode`                                    |                            |
-| `windsurf`    | `~/.codeium/windsurf`                            |                            |
-| `cline`       | `~/.cline`                                       |                            |
-| `roo`         | `~/.roo`                                         |                            |
-| `gemini`      | `~/.gemini`                                      |                            |
-| `vscode`      | `~/Library/Application Support/Code/User`        |                            |
-| `antigravity` | `~/Library/Application Support/Antigravity/User` |                            |
-| `goose`       | `~/.config/goose`                                |                            |
+| Client         | Location                                         | Notes                      |
+| -------------- | ------------------------------------------------ | -------------------------- |
+| `project`      | `./`                                             | Current working directory  |
+| `codex`        | `~/.codex`                                       |                            |
+| `claude`       | `~/.claude`                                      | `CLAUDE.md` ↔ `AGENTS.md` |
+| `claudeDesktop`| `~/Library/Application Support/Claude`           | MCP config only            |
+| `cursor`       | `~/.cursor`                                      | Supports `.mdc` rules      |
+| `opencode`     | `~/.opencode`                                    |                            |
+| `windsurf`     | `~/.codeium/windsurf`                            |                            |
+| `cline`        | `~/.cline`                                       |                            |
+| `roo`          | `~/.roo`                                         |                            |
+| `gemini`       | `~/.gemini`                                      |                            |
+| `vscode`       | `~/Library/Application Support/Code/User`        |                            |
+| `antigravity`  | `~/Library/Application Support/Antigravity/User` |                            |
+| `goose`        | `~/.config/goose`                                |                            |
+| `mcphub`       | `~/.config/mcphub`                               | MCP config only            |
+| `cherrystudio` | `~/.config/cherrystudio`                         | MCP config only            |
 
 ## Examples
 
@@ -112,3 +117,19 @@ Preview what would change:
 ```bash
 npx sync-agents --dry-run
 ```
+
+Reset all sync-agents generated files:
+
+```bash
+npx sync-agents --reset
+```
+
+## Roadmap
+
+Planned features for future versions:
+
+- [ ] **Agent hooks sync** — Sync lifecycle hooks (PreToolUse, afterFileEdit, etc.) to `.claude/settings.json` and `.cursor/hooks.json`
+- [ ] **Transforms** — Content placeholders like `__TIMESTAMP__`, `__STRUCTURE__`, `__ENV_VAR__`
+- [ ] **Migrate command** — Consolidate existing configs into a canonical `.agents/` directory
+- [ ] **Skill installer** — Install skills from local path, git URL, or HTTPS URL
+- [ ] **Canonical mode** — Use `.agents/` as single source of truth with symlinks (like dotagents)
