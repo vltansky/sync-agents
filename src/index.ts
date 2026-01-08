@@ -89,12 +89,7 @@ async function main() {
     if (!result.proceed) {
       return;
     }
-    // Use symlinks from interactive prompt if not already set via --link
-    const applyOptions = {
-      ...options,
-      link: options.link || result.useSymlinks,
-    };
-    const applyResult = await applyPlan(result.entries, applyOptions);
+    const applyResult = await applyPlan(result.entries, options);
     printApplyResult(applyResult, options.verbose ?? false);
 
     // Post-apply: update manifest, prune stale files, update gitignore

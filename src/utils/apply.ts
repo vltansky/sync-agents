@@ -5,13 +5,11 @@ import os from "node:os";
 import type { SyncOptions, SyncPlanEntry } from "../types/index.js";
 import {
   writeFileSafe,
-  createSymlink,
   createBackup,
   restoreBackup,
   verifyFileHash,
   readFileSafe,
   hashContent,
-  getSymlinkTarget,
   fileExists,
 } from "./fs.js";
 import { transformContentForClient } from "./frontmatter.js";
@@ -54,7 +52,6 @@ export async function applyPlan(
     return result;
   }
 
-  const useSymlinks = options.link ?? false;
   const appliedChanges: AppliedChange[] = [];
 
   for (const entry of plan) {
@@ -78,25 +75,11 @@ export async function applyPlan(
     );
 
     // Check if file already has identical content (skip unchanged)
-    if (!useSymlinks) {
-      const existingContent = await readFileSafe(entry.targetPath);
-      if (existingContent !== null) {
-        const existingHash = hashContent(existingContent);
-        const newHash = hashContent(transformedContent);
-        if (existingHash === newHash) {
-          if (options.verbose) {
-            console.log(
-              chalk.gray(`unchanged ${entry.targetClient} :: ${displayPath}`),
-            );
-          }
-          result.skipped++;
-          continue;
-        }
-      }
-    } else {
-      // For symlinks, check if already pointing to correct target
-      const currentTarget = await getSymlinkTarget(entry.targetPath);
-      if (currentTarget === entry.asset.path) {
+    const existingContent = await readFileSafe(entry.targetPath);
+    if (existingContent !== null) {
+      const existingHash = hashContent(existingContent);
+      const newHash = hashContent(transformedContent);
+      if (existingHash === newHash) {
         if (options.verbose) {
           console.log(
             chalk.gray(`unchanged ${entry.targetClient} :: ${displayPath}`),
@@ -108,10 +91,9 @@ export async function applyPlan(
     }
 
     if (options.dryRun) {
-      const action = useSymlinks ? "link" : entry.action;
       console.log(
         chalk.yellow(
-          `${action.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
+          `${entry.action.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
         ),
       );
       result.applied++;
@@ -121,47 +103,34 @@ export async function applyPlan(
     let backupPath: string | null = null;
 
     try {
-      // Create backup before overwrite (only for existing files, not symlinks)
-      if (!useSymlinks) {
-        backupPath = await createBackup(entry.targetPath);
-        if (backupPath) {
-          result.backups.push(backupPath);
-          if (options.verbose) {
-            console.log(chalk.dim(`  backup: ${backupPath}`));
-          }
+      // Create backup before overwrite
+      backupPath = await createBackup(entry.targetPath);
+      if (backupPath) {
+        result.backups.push(backupPath);
+        if (options.verbose) {
+          console.log(chalk.dim(`  backup: ${backupPath}`));
         }
       }
 
-      if (useSymlinks) {
-        await createSymlink(entry.asset.path, entry.targetPath);
-        console.log(
-          chalk.cyan(
-            `link    ${entry.targetClient} :: ${displayPath} -> ${entry.asset.path}`,
-          ),
-        );
-      } else {
-        await writeFileSafe(entry.targetPath, transformedContent);
-        console.log(
-          chalk.green(
-            `${entry.action.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
-          ),
-        );
-      }
+      await writeFileSafe(entry.targetPath, transformedContent);
+      console.log(
+        chalk.green(
+          `${entry.action.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
+        ),
+      );
 
-      // Post-sync verification (only for regular writes, not symlinks)
-      if (!useSymlinks) {
-        const verified = await verifyFileHash(
-          entry.targetPath,
-          transformedContent,
-        );
-        if (!verified) {
-          const error = `Verification failed for ${entry.targetPath}`;
-          result.errors.push(error);
-          console.log(chalk.red(`  ✗ ${error}`));
-          result.failed++;
-          await rollbackChanges(appliedChanges, result, options.verbose);
-          return result;
-        }
+      // Post-sync verification
+      const verified = await verifyFileHash(
+        entry.targetPath,
+        transformedContent,
+      );
+      if (!verified) {
+        const error = `Verification failed for ${entry.targetPath}`;
+        result.errors.push(error);
+        console.log(chalk.red(`  ✗ ${error}`));
+        result.failed++;
+        await rollbackChanges(appliedChanges, result, options.verbose);
+        return result;
       }
 
       appliedChanges.push({ targetPath: entry.targetPath, backupPath });

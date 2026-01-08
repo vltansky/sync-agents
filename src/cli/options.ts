@@ -66,7 +66,6 @@ export function parseCliArgs(argv: string[]): SyncOptions {
       "destination file for exported Cursor history (default: ~/.cursor/AGENTS.md)",
     )
     .option("--dry-run", "preview without writing changes")
-    .option("--link", "use symlinks instead of copying files")
     .option("--reset", "remove all sync-agents generated files and reset")
     .option("--revert", "restore files from backups (undo last sync)")
     .option("--revert-list", "show available backups")
@@ -115,7 +114,6 @@ export function parseCliArgs(argv: string[]): SyncOptions {
     priority,
     exportCursorHistory: Boolean(opts.exportCursorHistory),
     cursorHistoryDest: opts.cursorHistoryDest,
-    link: Boolean(opts.link),
     reset: Boolean(opts.reset),
     revert: Boolean(opts.revert),
     revertList: Boolean(opts.revertList),

@@ -73,7 +73,6 @@ export interface SyncOptions {
   priority?: AgentClientName[];
   exportCursorHistory?: boolean;
   cursorHistoryDest?: string;
-  link?: boolean;
   reset?: boolean;
   revert?: boolean;
   revertList?: boolean;

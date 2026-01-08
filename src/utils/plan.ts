@@ -95,6 +95,7 @@ export function buildSyncPlan(
         desired,
         def.name,
         baseRelative,
+        defs,
       );
       const targetPath = buildTargetAbsolutePath(def.root, targetRelative);
       validatePathSafe(def.root, targetPath);

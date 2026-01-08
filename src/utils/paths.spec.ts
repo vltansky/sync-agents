@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { AssetContent } from "../types/index.js";
+import type { AssetContent, ClientDefinition } from "../types/index.js";
 import {
   normalizeRelativePath,
   canonicalizeRelativePath,
@@ -7,7 +7,49 @@ import {
   buildTargetAbsolutePath,
   resolveTargetRelativePath,
   remapRelativePathForTarget,
+  getTargetMcpFilename,
+  canonicalizeMcpPath,
+  denormalizeMcpPath,
 } from "./paths.js";
+
+const mockDefs: ClientDefinition[] = [
+  {
+    name: "codex",
+    displayName: "Codex",
+    root: "/home/.codex",
+    assets: [
+      { type: "agents", patterns: ["AGENTS.md"] },
+      { type: "mcp", patterns: [], files: ["config.toml"] },
+    ],
+  },
+  {
+    name: "cursor",
+    displayName: "Cursor",
+    root: "/home/.cursor",
+    assets: [
+      { type: "agents", patterns: ["AGENTS.md"] },
+      { type: "mcp", patterns: [], files: ["mcp.json"] },
+    ],
+  },
+  {
+    name: "opencode",
+    displayName: "OpenCode",
+    root: "/home/.opencode",
+    assets: [
+      { type: "agents", patterns: ["AGENTS.md"] },
+      { type: "mcp", patterns: [], files: ["opencode.jsonc", "config.json"] },
+    ],
+  },
+  {
+    name: "windsurf",
+    displayName: "Windsurf",
+    root: "/home/.codeium/windsurf",
+    assets: [
+      { type: "agents", patterns: ["AGENTS.md"] },
+      { type: "mcp", patterns: [], files: ["mcp_config.json"] },
+    ],
+  },
+];
 
 describe("path utilities", () => {
   describe("normalizeRelativePath", () => {
@@ -51,6 +93,22 @@ describe("path utilities", () => {
       expect(
         canonicalizeRelativePath("codex", "commands", "prompts/test.md"),
       ).toBe("commands/test.md");
+    });
+
+    it("should preserve nested folder structure when converting codex prompts/ to commands/", () => {
+      expect(
+        canonicalizeRelativePath(
+          "codex",
+          "commands",
+          "prompts/octocode/research.md",
+        ),
+      ).toBe("commands/octocode/research.md");
+    });
+
+    it("should preserve deeply nested folder structure for codex prompts", () => {
+      expect(
+        canonicalizeRelativePath("codex", "commands", "prompts/a/b/c/deep.md"),
+      ).toBe("commands/a/b/c/deep.md");
     });
 
     it("should not modify paths for other clients", () => {
@@ -103,6 +161,42 @@ describe("path utilities", () => {
       ).toBe("prompts/test.md");
     });
 
+    it("should preserve nested folder structure when converting commands to prompts for codex", () => {
+      const asset: AssetContent = {
+        client: "cursor",
+        type: "commands",
+        path: "/cursor/commands/octocode/research.md",
+        relativePath: "commands/octocode/research.md",
+        canonicalPath: "commands/octocode/research.md",
+        name: "octocode/research",
+        content: "content",
+        hash: "hash",
+      };
+      expect(
+        remapRelativePathForTarget(
+          asset,
+          "codex",
+          "commands/octocode/research.md",
+        ),
+      ).toBe("prompts/octocode/research.md");
+    });
+
+    it("should preserve deeply nested folder structure for codex", () => {
+      const asset: AssetContent = {
+        client: "cursor",
+        type: "commands",
+        path: "/cursor/commands/a/b/c/deep.md",
+        relativePath: "commands/a/b/c/deep.md",
+        canonicalPath: "commands/a/b/c/deep.md",
+        name: "a/b/c/deep",
+        content: "content",
+        hash: "hash",
+      };
+      expect(
+        remapRelativePathForTarget(asset, "codex", "commands/a/b/c/deep.md"),
+      ).toBe("prompts/a/b/c/deep.md");
+    });
+
     it("should preserve commands path for non-codex clients", () => {
       const asset: AssetContent = {
         client: "claude",
@@ -117,6 +211,124 @@ describe("path utilities", () => {
       expect(
         remapRelativePathForTarget(asset, "claude", "commands/test.md"),
       ).toBe("commands/test.md");
+    });
+
+    it("should remap MCP config.toml to mcp.json for cursor", () => {
+      const asset: AssetContent = {
+        client: "codex",
+        type: "mcp",
+        path: "/codex/config.toml",
+        relativePath: "config.toml",
+        canonicalPath: "mcp.json",
+        name: "config",
+        content: "[mcpServers]",
+        hash: "hash",
+      };
+      expect(
+        remapRelativePathForTarget(asset, "cursor", "mcp.json", mockDefs),
+      ).toBe("mcp.json");
+    });
+
+    it("should remap MCP to opencode.jsonc for opencode", () => {
+      const asset: AssetContent = {
+        client: "cursor",
+        type: "mcp",
+        path: "/cursor/mcp.json",
+        relativePath: "mcp.json",
+        canonicalPath: "mcp.json",
+        name: "mcp",
+        content: "{}",
+        hash: "hash",
+      };
+      expect(
+        remapRelativePathForTarget(asset, "opencode", "mcp.json", mockDefs),
+      ).toBe("opencode.jsonc");
+    });
+
+    it("should remap MCP to config.toml for codex", () => {
+      const asset: AssetContent = {
+        client: "cursor",
+        type: "mcp",
+        path: "/cursor/mcp.json",
+        relativePath: "mcp.json",
+        canonicalPath: "mcp.json",
+        name: "mcp",
+        content: "{}",
+        hash: "hash",
+      };
+      expect(
+        remapRelativePathForTarget(asset, "codex", "mcp.json", mockDefs),
+      ).toBe("config.toml");
+    });
+
+    it("should remap MCP to mcp_config.json for windsurf", () => {
+      const asset: AssetContent = {
+        client: "codex",
+        type: "mcp",
+        path: "/codex/config.toml",
+        relativePath: "config.toml",
+        canonicalPath: "mcp.json",
+        name: "config",
+        content: "[mcpServers]",
+        hash: "hash",
+      };
+      expect(
+        remapRelativePathForTarget(asset, "windsurf", "mcp.json", mockDefs),
+      ).toBe("mcp_config.json");
+    });
+  });
+
+  describe("canonicalizeMcpPath", () => {
+    it("should canonicalize config.toml to mcp.json", () => {
+      expect(canonicalizeMcpPath("config.toml")).toBe("mcp.json");
+    });
+
+    it("should canonicalize opencode.jsonc to mcp.json", () => {
+      expect(canonicalizeMcpPath("opencode.jsonc")).toBe("mcp.json");
+    });
+
+    it("should canonicalize mcp_config.json to mcp.json", () => {
+      expect(canonicalizeMcpPath("mcp_config.json")).toBe("mcp.json");
+    });
+  });
+
+  describe("getTargetMcpFilename", () => {
+    it("should return config.toml for codex", () => {
+      expect(getTargetMcpFilename("codex", mockDefs)).toBe("config.toml");
+    });
+
+    it("should return mcp.json for cursor", () => {
+      expect(getTargetMcpFilename("cursor", mockDefs)).toBe("mcp.json");
+    });
+
+    it("should return opencode.jsonc for opencode", () => {
+      expect(getTargetMcpFilename("opencode", mockDefs)).toBe("opencode.jsonc");
+    });
+
+    it("should return null for unknown client", () => {
+      expect(getTargetMcpFilename("unknown" as any, mockDefs)).toBeNull();
+    });
+  });
+
+  describe("denormalizeMcpPath", () => {
+    it("should return client-specific MCP filename", () => {
+      expect(denormalizeMcpPath("codex", mockDefs)).toBe("config.toml");
+      expect(denormalizeMcpPath("cursor", mockDefs)).toBe("mcp.json");
+      expect(denormalizeMcpPath("opencode", mockDefs)).toBe("opencode.jsonc");
+    });
+  });
+
+  describe("canonicalizeRelativePath for MCP", () => {
+    it("should canonicalize any MCP config to mcp.json", () => {
+      expect(canonicalizeRelativePath("codex", "mcp", "config.toml")).toBe(
+        "mcp.json",
+      );
+      expect(canonicalizeRelativePath("cursor", "mcp", "mcp.json")).toBe(
+        "mcp.json",
+      );
+      expect(
+        canonicalizeRelativePath("opencode", "mcp", "opencode.jsonc"),
+      ).toBe("mcp.json");
     });
   });
 });
