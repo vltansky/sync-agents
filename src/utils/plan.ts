@@ -6,7 +6,10 @@ import type {
   SyncOptions,
   SyncPlanEntry,
 } from "../types/index.js";
-import { CLIENT_ORDER } from "../clients/definitions.js";
+import {
+  CLIENT_ORDER,
+  clientSupportsAssetType,
+} from "../clients/definitions.js";
 import {
   buildTargetAbsolutePath,
   resolveTargetRelativePath,
@@ -14,6 +17,12 @@ import {
   remapRelativePathForTarget,
 } from "./paths.js";
 import { validatePathSafe } from "./validation.js";
+import {
+  mergeRulesIntoAgents,
+  shouldMergeRulesIntoAgents,
+  getRulesForMerge,
+} from "./merge.js";
+import { hashContent } from "./fs.js";
 
 /**
  * Check if target client requires content transformation for this asset type.
@@ -74,6 +83,10 @@ export function buildSyncPlan(
     existingMap.set(asset.client, clientMap);
   }
 
+  // Collect rules for merging into agents for clients that don't support rules
+  const sourceClient = options.mode === "source" ? options.source : undefined;
+  const rulesToMerge = getRulesForMerge(filteredAssets, sourceClient);
+
   const plan: SyncPlanEntry[] = [];
 
   for (const def of defs) {
@@ -82,7 +95,14 @@ export function buildSyncPlan(
     }
 
     const supports = new Set(def.assets.map((a) => a.type));
+    const needsRulesMerge =
+      shouldMergeRulesIntoAgents(def) && rulesToMerge.length > 0;
+
     for (const [key, desired] of canonical.entries()) {
+      // Skip rules for clients that don't support them - they'll be merged into agents
+      if (desired.type === "rules" && !clientSupportsAssetType(def, "rules")) {
+        continue;
+      }
       if (!supports.has(desired.type)) {
         continue;
       }
@@ -90,9 +110,24 @@ export function buildSyncPlan(
         // Already the canonical source, skip
         continue;
       }
-      const baseRelative = resolveTargetRelativePath(def.name, desired);
+
+      // For agents on clients without rules support, merge rules into content
+      let assetToWrite = desired;
+      if (desired.type === "agents" && needsRulesMerge) {
+        const mergedContent = mergeRulesIntoAgents(
+          desired.content,
+          rulesToMerge,
+        );
+        assetToWrite = {
+          ...desired,
+          content: mergedContent,
+          hash: hashContent(mergedContent),
+        };
+      }
+
+      const baseRelative = resolveTargetRelativePath(def.name, assetToWrite);
       const targetRelative = remapRelativePathForTarget(
-        desired,
+        assetToWrite,
         def.name,
         baseRelative,
         defs,
@@ -101,10 +136,19 @@ export function buildSyncPlan(
       validatePathSafe(def.root, targetPath);
       const existing = existingMap.get(def.name)?.get(key);
       // Don't skip if target requires transformation - let apply phase compare transformed content
-      const needsTransform = requiresTransformation(def.name, desired.type);
-      if (existing && existing.hash === desired.hash && !needsTransform) {
+      const needsTransform = requiresTransformation(
+        def.name,
+        assetToWrite.type,
+      );
+      // Also don't skip if rules were merged - hash will differ
+      if (
+        existing &&
+        existing.hash === assetToWrite.hash &&
+        !needsTransform &&
+        !needsRulesMerge
+      ) {
         plan.push({
-          asset: desired,
+          asset: assetToWrite,
           targetClient: def.name,
           targetPath,
           action: "skip",
@@ -114,7 +158,7 @@ export function buildSyncPlan(
       }
 
       plan.push({
-        asset: desired,
+        asset: assetToWrite,
         targetClient: def.name,
         targetPath,
         targetRelativePath: targetRelative,

@@ -1,6 +1,6 @@
 # sync-agents
 
-Synchronize `AGENTS.md`, commands, rules, skills, and MCP configs across AI coding assistants (Codex, Claude Code, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose) plus your current project.
+Synchronize `AGENTS.md`, commands, rules, skills, and MCP configs across AI coding assistants (Codex, Claude Code, Cursor, OpenCode) plus your current project.
 
 ## Quick Start
 
@@ -80,23 +80,25 @@ Exports Cursor's "Rules & Config" history to `~/.cursor/AGENTS.md`, then you can
 
 ## Supported Clients
 
-| Client         | Location                                         | Notes                      |
-| -------------- | ------------------------------------------------ | -------------------------- |
-| `project`      | `./`                                             | Current working directory  |
-| `codex`        | `~/.codex`                                       |                            |
-| `claude`       | `~/.claude`                                      | `CLAUDE.md` ↔ `AGENTS.md` |
-| `claudeDesktop`| `~/Library/Application Support/Claude`           | MCP config only            |
-| `cursor`       | `~/.cursor`                                      | Supports `.mdc` rules      |
-| `opencode`     | `~/.opencode`                                    |                            |
-| `windsurf`     | `~/.codeium/windsurf`                            |                            |
-| `cline`        | `~/.cline`                                       |                            |
-| `roo`          | `~/.roo`                                         |                            |
-| `gemini`       | `~/.gemini`                                      |                            |
-| `vscode`       | `~/Library/Application Support/Code/User`        |                            |
-| `antigravity`  | `~/Library/Application Support/Antigravity/User` |                            |
-| `goose`        | `~/.config/goose`                                |                            |
-| `mcphub`       | `~/.config/mcphub`                               | MCP config only            |
-| `cherrystudio` | `~/.config/cherrystudio`                         | MCP config only            |
+| Client    | Location              | Agents         | Rules              | Commands           | MCP              |
+| --------- | --------------------- | -------------- | ------------------ | ------------------ | ---------------- |
+| `project` | `./`                  | `AGENTS.md`    | `rules/**/*.md`    | `commands/**/*.md` | `.cursor/mcp.json` |
+| `codex`   | `~/.codex`            | `AGENTS.md`    | `rules/**/*.rules` | `prompts/**/*.md`  | `config.toml`    |
+| `claude`  | `~/.claude`           | `CLAUDE.md`    | *(merged into agents)* | `commands/**/*.md` | —                |
+| `cursor`  | `~/.cursor`           | `AGENTS.md`    | `rules/**/*.md`    | `commands/**/*.md` | `mcp.json`       |
+| `opencode`| `~/.config/opencode`  | `AGENTS.md`    | `rules/**/*.md`    | `command/**/*.md`  | `opencode.jsonc` |
+
+### Path Mappings
+
+When syncing between clients, paths are automatically mapped:
+
+| From | To | Mapping |
+| ---- | -- | ------- |
+| Any client | Codex | `commands/` → `prompts/` |
+| Any client | OpenCode | `commands/` → `command/` (singular) |
+| Any client | OpenCode | `skills/` → `skill/` (singular) |
+| Any client | Claude | `AGENTS.md` → `CLAUDE.md` |
+| Cursor rules | Claude/Codex | Rules merged into `AGENTS.md`/`CLAUDE.md` |
 
 ## Examples
 
@@ -126,7 +128,40 @@ npx sync-agents --reset
 
 ## Roadmap
 
-Planned features for future versions:
+### Planned Client Support
+
+| Client | Location | Config Format | Status |
+| ------ | -------- | ------------- | ------ |
+| **Claude Desktop** | `~/Library/Application Support/Claude` | `claude_desktop_config.json` (MCP only) | 🔜 Planned |
+| **Windsurf** | `~/.codeium/windsurf` | `.windsurfrules`, `mcp_config.json` | 🔜 Planned |
+| **Cline** | VS Code globalStorage | `cline_mcp_settings.json`, `.clinerules` | 🔜 Planned |
+| **Roo Code** | VS Code globalStorage | Same as Cline (fork) | 🔜 Planned |
+| **Aider** | `~/.aider.conf.yml` | YAML config, `CONVENTIONS.md` | 🔜 Planned |
+| **Gemini CLI** | `~/.gemini` | Unknown | 🔍 Research |
+| **VS Code** | `~/Library/Application Support/Code/User` | `settings.json` | 🔍 Research |
+| **Antigravity** | `~/Library/Application Support/Antigravity` | Unknown | 🔍 Research |
+| **Goose** | `~/.config/goose` | YAML config | 🔍 Research |
+
+### Known Config Formats
+
+| Format | Used By | Notes |
+| ------ | ------- | ----- |
+| `AGENTS.md` / `CLAUDE.md` | Codex, Claude, Cursor, OpenCode | Markdown agent instructions |
+| `rules/**/*.md` | Cursor, OpenCode | Always-applied rules |
+| `rules/**/*.mdc` | Cursor | MDC format rules |
+| `commands/**/*.md` | Claude, Cursor | Slash commands |
+| `prompts/**/*.md` | Codex | Slash commands (Codex naming) |
+| `mcp.json` | Cursor | MCP server config |
+| `config.toml` | Codex | TOML MCP config |
+| `opencode.jsonc` | OpenCode | JSONC MCP config |
+| `claude_desktop_config.json` | Claude Desktop | MCP only |
+| `cline_mcp_settings.json` | Cline, Roo | MCP config |
+| `.clinerules` | Cline | Global/local rules |
+| `.windsurfrules` | Windsurf | Rules file |
+| `.aider.conf.yml` | Aider | YAML config |
+| `CONVENTIONS.md` | Aider | Coding conventions |
+
+### Planned Features
 
 - [ ] **Agent hooks sync** — Sync lifecycle hooks (PreToolUse, afterFileEdit, etc.) to `.claude/settings.json` and `.cursor/hooks.json`
 - [ ] **Transforms** — Content placeholders like `__TIMESTAMP__`, `__STRUCTURE__`, `__ENV_VAR__`

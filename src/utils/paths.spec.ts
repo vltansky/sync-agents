@@ -34,19 +34,11 @@ const mockDefs: ClientDefinition[] = [
   {
     name: "opencode",
     displayName: "OpenCode",
-    root: "/home/.opencode",
+    root: "/home/.config/opencode",
     assets: [
       { type: "agents", patterns: ["AGENTS.md"] },
-      { type: "mcp", patterns: [], files: ["opencode.jsonc", "config.json"] },
-    ],
-  },
-  {
-    name: "windsurf",
-    displayName: "Windsurf",
-    root: "/home/.codeium/windsurf",
-    assets: [
-      { type: "agents", patterns: ["AGENTS.md"] },
-      { type: "mcp", patterns: [], files: ["mcp_config.json"] },
+      { type: "commands", patterns: ["command/**/*.md"] },
+      { type: "mcp", patterns: [], files: ["opencode.jsonc"] },
     ],
   },
 ];
@@ -260,22 +252,6 @@ describe("path utilities", () => {
         remapRelativePathForTarget(asset, "codex", "mcp.json", mockDefs),
       ).toBe("config.toml");
     });
-
-    it("should remap MCP to mcp_config.json for windsurf", () => {
-      const asset: AssetContent = {
-        client: "codex",
-        type: "mcp",
-        path: "/codex/config.toml",
-        relativePath: "config.toml",
-        canonicalPath: "mcp.json",
-        name: "config",
-        content: "[mcpServers]",
-        hash: "hash",
-      };
-      expect(
-        remapRelativePathForTarget(asset, "windsurf", "mcp.json", mockDefs),
-      ).toBe("mcp_config.json");
-    });
   });
 
   describe("canonicalizeMcpPath", () => {
@@ -285,10 +261,6 @@ describe("path utilities", () => {
 
     it("should canonicalize opencode.jsonc to mcp.json", () => {
       expect(canonicalizeMcpPath("opencode.jsonc")).toBe("mcp.json");
-    });
-
-    it("should canonicalize mcp_config.json to mcp.json", () => {
-      expect(canonicalizeMcpPath("mcp_config.json")).toBe("mcp.json");
     });
   });
 
@@ -329,6 +301,94 @@ describe("path utilities", () => {
       expect(
         canonicalizeRelativePath("opencode", "mcp", "opencode.jsonc"),
       ).toBe("mcp.json");
+    });
+  });
+
+  describe("OpenCode singular directory mapping", () => {
+    describe("canonicalizeRelativePath", () => {
+      it("should convert opencode command/ to canonical commands/", () => {
+        expect(
+          canonicalizeRelativePath("opencode", "commands", "command/test.md"),
+        ).toBe("commands/test.md");
+      });
+
+      it("should preserve nested structure when converting command/ to commands/", () => {
+        expect(
+          canonicalizeRelativePath(
+            "opencode",
+            "commands",
+            "command/sub/nested.md",
+          ),
+        ).toBe("commands/sub/nested.md");
+      });
+
+      it("should convert opencode skill/ to canonical skills/", () => {
+        expect(
+          canonicalizeRelativePath(
+            "opencode",
+            "skills",
+            "skill/myskill/SKILL.md",
+          ),
+        ).toBe("skills/myskill/SKILL.md");
+      });
+    });
+
+    describe("remapRelativePathForTarget", () => {
+      it("should convert commands/ to command/ for opencode", () => {
+        const asset: AssetContent = {
+          client: "cursor",
+          type: "commands",
+          path: "/cursor/commands/test.md",
+          relativePath: "commands/test.md",
+          canonicalPath: "commands/test.md",
+          name: "test",
+          content: "content",
+          hash: "hash",
+        };
+        expect(
+          remapRelativePathForTarget(asset, "opencode", "commands/test.md"),
+        ).toBe("command/test.md");
+      });
+
+      it("should preserve nested structure when converting to opencode command/", () => {
+        const asset: AssetContent = {
+          client: "cursor",
+          type: "commands",
+          path: "/cursor/commands/sub/nested.md",
+          relativePath: "commands/sub/nested.md",
+          canonicalPath: "commands/sub/nested.md",
+          name: "sub/nested",
+          content: "content",
+          hash: "hash",
+        };
+        expect(
+          remapRelativePathForTarget(
+            asset,
+            "opencode",
+            "commands/sub/nested.md",
+          ),
+        ).toBe("command/sub/nested.md");
+      });
+
+      it("should convert skills/ to skill/ for opencode", () => {
+        const asset: AssetContent = {
+          client: "cursor",
+          type: "skills",
+          path: "/cursor/skills/myskill/SKILL.md",
+          relativePath: "skills/myskill/SKILL.md",
+          canonicalPath: "skills/myskill/SKILL.md",
+          name: "myskill",
+          content: "content",
+          hash: "hash",
+        };
+        expect(
+          remapRelativePathForTarget(
+            asset,
+            "opencode",
+            "skills/myskill/SKILL.md",
+          ),
+        ).toBe("skill/myskill/SKILL.md");
+      });
     });
   });
 });

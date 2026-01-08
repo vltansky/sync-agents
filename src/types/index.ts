@@ -2,18 +2,8 @@ export type AgentClientName =
   | "project"
   | "codex"
   | "claude"
-  | "claudeDesktop"
   | "cursor"
-  | "opencode"
-  | "windsurf"
-  | "cline"
-  | "roo"
-  | "gemini"
-  | "vscode"
-  | "antigravity"
-  | "goose"
-  | "mcphub"
-  | "cherrystudio";
+  | "opencode";
 
 export type AssetType =
   | "agents"

@@ -11,18 +11,8 @@ const CLIENT_CHOICES: AgentClientName[] = [
   "project",
   "codex",
   "claude",
-  "claudeDesktop",
   "cursor",
   "opencode",
-  "windsurf",
-  "cline",
-  "roo",
-  "gemini",
-  "vscode",
-  "antigravity",
-  "goose",
-  "mcphub",
-  "cherrystudio",
 ];
 const TYPE_CHOICES: AssetType[] = [
   "agents",

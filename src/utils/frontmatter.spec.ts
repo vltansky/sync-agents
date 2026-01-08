@@ -233,7 +233,7 @@ model: opus
       expect(result).toBe(content);
     });
 
-    it("preserves Cursor-specific keys when syncing to Windsurf", () => {
+    it("preserves Cursor-specific keys when syncing to OpenCode", () => {
       const content = `---
 description: Test
 argument-hint: [plan]
@@ -241,7 +241,7 @@ model: opus
 ---
 
 # Test`;
-      const result = transformContentForClient(content, "windsurf", "commands");
+      const result = transformContentForClient(content, "opencode", "commands");
       expect(result).toBe(content);
     });
 
