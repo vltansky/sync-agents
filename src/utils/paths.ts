@@ -23,6 +23,7 @@ export function canonicalizeRelativePath(
 ): string {
   const normalized = normalizeRelativePath(relativePath);
   if (type === "agents") {
+    // Canonicalize CLAUDE.md to AGENTS.md
     if (normalized.toLowerCase() === CLAUDE_FILE) {
       return AGENTS_FILE;
     }
@@ -65,12 +66,13 @@ export function denormalizeRelativePath(
   type: AssetType,
   canonicalPath: string,
 ): string {
-  if (
-    type === "agents" &&
-    client === "claude" &&
-    canonicalPath === AGENTS_FILE
-  ) {
-    return "CLAUDE.md";
+  if (type === "agents" && canonicalPath === AGENTS_FILE) {
+    // Claude Code uses CLAUDE.md
+    if (client === "claude") {
+      return "CLAUDE.md";
+    }
+    // OpenCode uses AGENTS.md (same as Cursor/Codex)
+    // See: https://opencode.ai/docs/rules/
   }
   return canonicalPath;
 }

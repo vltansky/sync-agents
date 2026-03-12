@@ -3,6 +3,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+const BACKUP_PREFIX = "__SYNC_AGENTS_BACKUP_V1__\n";
+
+interface BackupPayload {
+  kind: "file" | "symlink";
+  content?: string;
+  linkTarget?: string;
+}
+
 export async function fileExists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
@@ -58,9 +66,25 @@ export async function getFileMtime(filePath: string): Promise<Date | null> {
  */
 export async function createBackup(filePath: string): Promise<string | null> {
   try {
-    await fs.access(filePath);
     const backupPath = `${filePath}.bak`;
-    await fs.copyFile(filePath, backupPath);
+    const stats = await fs.lstat(filePath);
+
+    if (stats.isSymbolicLink()) {
+      const linkTarget = await fs.readlink(filePath);
+      await fs.writeFile(
+        backupPath,
+        serializeBackupPayload({ kind: "symlink", linkTarget }),
+        "utf8",
+      );
+      return backupPath;
+    }
+
+    const content = await fs.readFile(filePath, "utf8");
+    await fs.writeFile(
+      backupPath,
+      serializeBackupPayload({ kind: "file", content }),
+      "utf8",
+    );
     return backupPath;
   } catch {
     return null;
@@ -76,8 +100,23 @@ export async function restoreBackup(
   targetPath: string,
 ): Promise<boolean> {
   try {
-    await fs.access(backupPath);
-    await fs.copyFile(backupPath, targetPath);
+    const backupContent = await fs.readFile(backupPath, "utf8");
+    const payload = parseBackupPayload(backupContent);
+
+    if (!payload) {
+      await writeFileSafe(targetPath, backupContent);
+      return true;
+    }
+
+    await fs.rm(targetPath, { force: true, recursive: true });
+
+    if (payload.kind === "symlink" && payload.linkTarget) {
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.symlink(payload.linkTarget, targetPath);
+      return true;
+    }
+
+    await writeFileSafe(targetPath, payload.content ?? "");
     return true;
   } catch {
     return false;
@@ -114,5 +153,21 @@ export async function commandExists(command: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+function serializeBackupPayload(payload: BackupPayload): string {
+  return `${BACKUP_PREFIX}${JSON.stringify(payload)}`;
+}
+
+function parseBackupPayload(content: string): BackupPayload | null {
+  if (!content.startsWith(BACKUP_PREFIX)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(content.slice(BACKUP_PREFIX.length)) as BackupPayload;
+  } catch {
+    return null;
   }
 }

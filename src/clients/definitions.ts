@@ -70,16 +70,20 @@ export function buildClientDefinitions(
       // OpenCode uses XDG config dir: ~/.config/opencode/
       root: resolveOpenCodeRoot(),
       assets: [
-        // OpenCode uses AGENTS.md for agent instructions
+        // OpenCode uses AGENTS.md for rules/instructions
+        // See: https://opencode.ai/docs/rules/
         { type: "agents", patterns: ["AGENTS.md"] },
         // OpenCode uses singular: command/ (not commands/)
+        // See: https://opencode.ai/docs/commands/
         { type: "commands", patterns: ["command/**/*.md"] },
-        // OpenCode supports rules in rules/ directory
-        { type: "rules", patterns: ["rules/**/*.md"] },
+        // OpenCode rules are in AGENTS.md, not separate files
+        { type: "rules", patterns: [] },
         // OpenCode uses singular: skill/ (not skills/)
+        // See: https://opencode.ai/docs/skills/
         { type: "skills", patterns: ["skill/**/SKILL.md"] },
-        // MCP servers are configured in opencode.jsonc
-        { type: "mcp", patterns: [], files: ["opencode.jsonc"] },
+        // MCP servers are configured in opencode.json under "mcp" key
+        // See: https://opencode.ai/docs/mcp-servers/
+        { type: "mcp", patterns: [], files: ["opencode.json"] },
       ],
     },
   ];

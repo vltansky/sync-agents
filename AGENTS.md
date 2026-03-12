@@ -9,6 +9,8 @@ Guidance for autonomous coding agents contributing to the `sync-agents` package.
 - Run `npm test` to verify all tests pass.
 - Default CLI mode is interactive; keep UX non-destructive.
 
+> Note: the public CLI now centers on `sync`, `doctor`, and `restore` subcommands. Older mode/flag descriptions below are legacy until the rest of this document is refreshed.
+
 ## Project Overview
 
 - **Purpose:** synchronize agent artifacts (AGENTS, commands, prompts, rules, skills, MCP configs) across Codex, Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose, and the current project.
@@ -116,6 +118,7 @@ The interactive mode (`npm run dev`) follows this sequence:
 | ------------------- | ---------------------------------------------- |
 | `--dry-run`         | Show what would be done without making changes |
 | `--link`            | Use symlinks instead of copying files          |
+| `--separate-claude-md` | Leave Claude's `CLAUDE.md` unmanaged during sync |
 | `--verbose`         | Show detailed output                           |
 | `--scope <scope>`   | `global`, `project`, or `all`                  |
 | `--direction <dir>` | `push`, `pull`, or `sync`                      |

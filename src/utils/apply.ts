@@ -32,6 +32,13 @@ interface AppliedChange {
   backupPath: string | null;
 }
 
+function getWriteModeLabel(
+  useSymlink: boolean,
+  action: SyncPlanEntry["action"],
+): string {
+  return useSymlink ? "link" : action;
+}
+
 export async function applyPlan(
   plan: SyncPlanEntry[],
   options: SyncOptions,
@@ -73,13 +80,17 @@ export async function applyPlan(
       entry.targetClient,
       entry.asset.type,
     );
+    const symlinkEligible =
+      Boolean(options.link) &&
+      (await canWriteAsSymlink(entry, transformedContent));
+    const actionLabel = getWriteModeLabel(symlinkEligible, entry.action);
 
-    // Check if file already has identical content (skip unchanged)
-    const existingContent = await readFileSafe(entry.targetPath);
-    if (existingContent !== null) {
-      const existingHash = hashContent(existingContent);
-      const newHash = hashContent(transformedContent);
-      if (existingHash === newHash) {
+    if (symlinkEligible) {
+      const alreadyLinked = await isSymlinkToTarget(
+        entry.targetPath,
+        entry.asset.path,
+      );
+      if (alreadyLinked) {
         if (options.verbose) {
           console.log(
             chalk.gray(`unchanged ${entry.targetClient} :: ${displayPath}`),
@@ -88,12 +99,28 @@ export async function applyPlan(
         result.skipped++;
         continue;
       }
+    } else {
+      // Check if file already has identical content (skip unchanged)
+      const existingContent = await readFileSafe(entry.targetPath);
+      if (existingContent !== null) {
+        const existingHash = hashContent(existingContent);
+        const newHash = hashContent(transformedContent);
+        if (existingHash === newHash) {
+          if (options.verbose) {
+            console.log(
+              chalk.gray(`unchanged ${entry.targetClient} :: ${displayPath}`),
+            );
+          }
+          result.skipped++;
+          continue;
+        }
+      }
     }
 
     if (options.dryRun) {
       console.log(
         chalk.yellow(
-          `${entry.action.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
+          `${actionLabel.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
         ),
       );
       result.applied++;
@@ -112,18 +139,21 @@ export async function applyPlan(
         }
       }
 
-      await writeFileSafe(entry.targetPath, transformedContent);
+      if (symlinkEligible) {
+        await writeSymlinkSafe(entry.asset.path, entry.targetPath);
+      } else {
+        await writeFileSafe(entry.targetPath, transformedContent);
+      }
       console.log(
         chalk.green(
-          `${entry.action.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
+          `${actionLabel.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
         ),
       );
 
       // Post-sync verification
-      const verified = await verifyFileHash(
-        entry.targetPath,
-        transformedContent,
-      );
+      const verified = symlinkEligible
+        ? await isSymlinkToTarget(entry.targetPath, entry.asset.path)
+        : await verifyFileHash(entry.targetPath, transformedContent);
       if (!verified) {
         const error = `Verification failed for ${entry.targetPath}`;
         result.errors.push(error);
@@ -146,6 +176,43 @@ export async function applyPlan(
   }
 
   return result;
+}
+
+async function canWriteAsSymlink(
+  entry: SyncPlanEntry,
+  transformedContent: string,
+): Promise<boolean> {
+  const sourceContent = await readFileSafe(entry.asset.path);
+  return sourceContent === transformedContent;
+}
+
+async function isSymlinkToTarget(
+  linkPath: string,
+  targetPath: string,
+): Promise<boolean> {
+  try {
+    const stats = await fs.lstat(linkPath);
+    if (!stats.isSymbolicLink()) {
+      return false;
+    }
+
+    const linkTarget = await fs.readlink(linkPath);
+    const resolvedTarget = path.resolve(path.dirname(linkPath), linkTarget);
+    return resolvedTarget === path.resolve(targetPath);
+  } catch {
+    return false;
+  }
+}
+
+async function writeSymlinkSafe(
+  sourcePath: string,
+  targetPath: string,
+): Promise<void> {
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.rm(targetPath, { force: true, recursive: true });
+
+  const linkTarget = path.relative(path.dirname(targetPath), sourcePath);
+  await fs.symlink(linkTarget, targetPath);
 }
 
 async function rollbackChanges(

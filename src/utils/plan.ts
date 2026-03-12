@@ -23,6 +23,7 @@ import {
   getRulesForMerge,
 } from "./merge.js";
 import { hashContent } from "./fs.js";
+import { shouldSkipTargetAsset } from "./syncFilters.js";
 
 /**
  * Check if target client requires content transformation for this asset type.
@@ -101,6 +102,9 @@ export function buildSyncPlan(
     for (const [key, desired] of canonical.entries()) {
       // Skip rules for clients that don't support them - they'll be merged into agents
       if (desired.type === "rules" && !clientSupportsAssetType(def, "rules")) {
+        continue;
+      }
+      if (shouldSkipTargetAsset(options, def.name, desired)) {
         continue;
       }
       if (!supports.has(desired.type)) {

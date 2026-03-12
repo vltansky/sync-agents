@@ -51,6 +51,7 @@ import {
   remapRelativePathForTarget,
   buildTargetAbsolutePath,
 } from "../utils/paths.js";
+import { shouldSkipTargetAsset } from "../utils/syncFilters.js";
 
 /** Format asset count with type breakdown for display */
 function formatAssetSummary(assets: AssetContent[]): string {
@@ -185,6 +186,7 @@ export async function runInteractiveFlow(
     allAssets,
     conflicts,
     defs,
+    options,
   );
   if (typeof targetClients === "symbol" || targetClients.length === 0) {
     outro("Cancelled.");
@@ -197,6 +199,7 @@ export async function runInteractiveFlow(
     targetClients,
     defs,
     resolvedDirection,
+    options,
   );
 
   if (plan.length === 0) {
@@ -227,6 +230,37 @@ export async function runInteractiveFlow(
     );
   }
   console.log();
+
+  if (options.link === undefined) {
+    const writeMode = await select({
+      message: "How should files be written?",
+      options: [
+        {
+          value: "symlink",
+          label: "Symlink",
+          hint: "Recommended when target can point to the source file directly",
+        },
+        {
+          value: "copy",
+          label: "Copy",
+          hint: "Write independent file copies instead of symlinks",
+        },
+      ],
+      initialValue: "symlink",
+    });
+
+    if (typeof writeMode === "symbol") {
+      outro("Cancelled.");
+      return {
+        proceed: false,
+        entries: [],
+        scope,
+        direction: resolvedDirection,
+      };
+    }
+
+    options.link = writeMode === "symlink";
+  }
 
   const confirmed = await confirm({
     message: `Apply ${reviewedPlan.length} change(s)?`,
@@ -304,6 +338,7 @@ async function selectTargetClients(
   allAssets: AssetContent[],
   conflicts: AssetConflict[],
   defs: ClientDefinition[],
+  options: Pick<SyncOptions, "separateClaudeMd">,
 ): Promise<string[] | symbol> {
   // For sync mode, filter based on scope
   // For push/pull, direction determines which clients are targets
@@ -315,15 +350,6 @@ async function selectTargetClients(
 
   // Calculate diff for each client
   function getDiffLabel(client: ScanResult): string {
-    if (!client.found) {
-      // New client - everything would be added
-      const sourceAssets = allAssets.filter((a) => a.client !== client.client);
-      const uniqueCanonicals = new Set(
-        sourceAssets.map((a) => a.canonicalPath),
-      );
-      return `new, will get +${uniqueCanonicals.size}`;
-    }
-
     // Calculate what would be created/updated for this client
     const plan = buildPlanFromConflicts(
       allAssets,
@@ -331,6 +357,7 @@ async function selectTargetClients(
       [client.client],
       defs,
       direction,
+      options,
     );
 
     const creates = plan.filter((p) => p.action === "create").length;
@@ -594,6 +621,7 @@ function buildPlanFromConflicts(
   targetClients: string[],
   defs: ClientDefinition[],
   direction: SyncDirection,
+  options: Pick<SyncOptions, "separateClaudeMd">,
 ): SyncPlanEntry[] {
   const plan: SyncPlanEntry[] = [];
   const conflictKeys = new Set(conflicts.map((c) => c.canonicalKey));
@@ -682,6 +710,11 @@ function buildPlanFromConflicts(
 
       const def = defs.find((d) => d.name === clientName);
       if (!def) continue;
+      if (
+        shouldSkipTargetAsset(options, clientName as AgentClientName, asset)
+      ) {
+        continue;
+      }
 
       const supportsType = def.assets.some((a) => a.type === asset.type);
       if (!supportsType) continue;
@@ -872,8 +905,15 @@ async function reviewAllAssets(
       // Multiple sources - ask user which to use
       console.log();
 
+      // Sort by modification time (most recent first)
+      const sortedSources = [...rootSources].sort((a, b) => {
+        const timeA = a.modifiedAt?.getTime() ?? 0;
+        const timeB = b.modifiedAt?.getTime() ?? 0;
+        return timeB - timeA; // Most recent first
+      });
+
       const options: { value: string; label: string; hint: string }[] =
-        rootSources.map((a) => {
+        sortedSources.map((a) => {
           const sizeKb = (a.content.length / 1024).toFixed(1);
           const relTime = formatRelativeTime(a.modifiedAt);
           return {
@@ -887,7 +927,7 @@ async function reviewAllAssets(
       const sourceChoice = await select({
         message: "AGENTS.md source:",
         options,
-        initialValue: rootPlanEntries[0].asset.client,
+        initialValue: sortedSources[0].client, // Default to most recently modified
       });
 
       if (typeof sourceChoice === "symbol") return sourceChoice;
@@ -1258,12 +1298,20 @@ async function resolveAssetConflicts(
         });
       } else {
         hadConflicts = true;
+
+        // Sort by modification time (most recent first)
+        const sortedVersions = [...versions].sort((a, b) => {
+          const timeA = a.asset.modifiedAt?.getTime() ?? 0;
+          const timeB = b.asset.modifiedAt?.getTime() ?? 0;
+          return timeB - timeA;
+        });
+
         // Show conflict
         console.log();
         console.log(
           chalk.yellow(`"${canonicalPath}" (${type}) differs across clients:`),
         );
-        for (const version of versions) {
+        for (const version of sortedVersions) {
           const sizeKb = (version.asset.content.length / 1024).toFixed(1);
           const relTime = formatRelativeTime(version.asset.modifiedAt);
           console.log(
@@ -1272,8 +1320,8 @@ async function resolveAssetConflicts(
         }
 
         const similarity = calculateSimilarity(
-          first.asset.content,
-          versions[1].asset.content,
+          sortedVersions[0].asset.content,
+          sortedVersions[1].asset.content,
         );
         console.log(
           chalk.dim(
@@ -1283,8 +1331,9 @@ async function resolveAssetConflicts(
 
         const versionChoice = await select({
           message: `Which "${canonicalPath}" to use?`,
+          initialValue: sortedVersions[0].client, // Default to most recently modified
           options: [
-            ...versions.map((v) => ({
+            ...sortedVersions.map((v) => ({
               value: v.client,
               label: `${v.client} (${(v.asset.content.length / 1024).toFixed(1)}kb)`,
               hint: formatRelativeTime(v.asset.modifiedAt),
@@ -1296,7 +1345,9 @@ async function resolveAssetConflicts(
         if (typeof versionChoice === "symbol") return versionChoice;
 
         if (versionChoice !== "__skip__") {
-          const selected = versions.find((v) => v.client === versionChoice);
+          const selected = sortedVersions.find(
+            (v) => v.client === versionChoice,
+          );
           if (selected) {
             const sizeKb = (selected.asset.content.length / 1024).toFixed(1);
             resolved.push({

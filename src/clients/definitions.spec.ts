@@ -129,7 +129,7 @@ describe("buildClientDefinitions", () => {
   });
 
   describe("opencode client", () => {
-    // BUG: OpenCode uses ~/.config/opencode/ not ~/
+    // See: https://opencode.ai/docs/rules/
     it("should have root at ~/.config/opencode (XDG config dir)", () => {
       const defs = buildClientDefinitions(projectRoot);
       const opencode = defs.find((d) => d.name === "opencode");
@@ -138,39 +138,41 @@ describe("buildClientDefinitions", () => {
       expect(opencode?.root).toBe(expectedRoot);
     });
 
-    // BUG: OpenCode uses singular directory names
-    it("should use singular directory names (command/, skill/, agent/)", () => {
-      const defs = buildClientDefinitions(projectRoot);
-      const opencode = defs.find((d) => d.name === "opencode");
-      const commands = opencode?.assets.find((a) => a.type === "commands");
-      const skills = opencode?.assets.find((a) => a.type === "skills");
-
-      // OpenCode uses singular: command/ not commands/
-      expect(commands?.patterns).toContain("command/**/*.md");
-      // OpenCode uses singular: skill/ not skills/
-      expect(skills?.patterns).toContain("skill/**/SKILL.md");
-    });
-
-    // BUG: OpenCode config file is opencode.jsonc not .opencode.json
-    it("should use opencode.jsonc for MCP config", () => {
-      const defs = buildClientDefinitions(projectRoot);
-      const opencode = defs.find((d) => d.name === "opencode");
-      const mcp = opencode?.assets.find((a) => a.type === "mcp");
-      expect(mcp?.files).toContain("opencode.jsonc");
-    });
-
-    it("should support AGENTS.md for agents", () => {
+    it("should use AGENTS.md for agents (same as Cursor)", () => {
       const defs = buildClientDefinitions(projectRoot);
       const opencode = defs.find((d) => d.name === "opencode");
       const agents = opencode?.assets.find((a) => a.type === "agents");
       expect(agents?.patterns).toContain("AGENTS.md");
     });
 
-    it("should support rules in rules/ directory", () => {
+    it("should use singular command/ directory (not commands/)", () => {
+      // See: https://opencode.ai/docs/commands/
+      const defs = buildClientDefinitions(projectRoot);
+      const opencode = defs.find((d) => d.name === "opencode");
+      const commands = opencode?.assets.find((a) => a.type === "commands");
+      expect(commands?.patterns).toContain("command/**/*.md");
+    });
+
+    it("should NOT have rules directory (rules are in AGENTS.md)", () => {
       const defs = buildClientDefinitions(projectRoot);
       const opencode = defs.find((d) => d.name === "opencode");
       const rules = opencode?.assets.find((a) => a.type === "rules");
-      expect(rules?.patterns).toContain("rules/**/*.md");
+      expect(rules?.patterns).toEqual([]);
+    });
+
+    it("should use singular skill/ directory (via oh-my-opencode)", () => {
+      const defs = buildClientDefinitions(projectRoot);
+      const opencode = defs.find((d) => d.name === "opencode");
+      const skills = opencode?.assets.find((a) => a.type === "skills");
+      // OpenCode uses singular: skill/ not skills/
+      expect(skills?.patterns).toContain("skill/**/SKILL.md");
+    });
+
+    it("should use opencode.json for MCP config", () => {
+      const defs = buildClientDefinitions(projectRoot);
+      const opencode = defs.find((d) => d.name === "opencode");
+      const mcp = opencode?.assets.find((a) => a.type === "mcp");
+      expect(mcp?.files).toContain("opencode.json");
     });
   });
 });

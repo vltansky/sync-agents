@@ -1,10 +1,8 @@
 import { Command } from "commander";
 import type {
   AgentClientName,
-  AssetType,
-  SyncOptions,
-  SyncScope,
-  SyncDirection,
+  CliCommandOptions,
+  ManagedAssetType,
 } from "../types/index.js";
 
 const CLIENT_CHOICES: AgentClientName[] = [
@@ -14,100 +12,135 @@ const CLIENT_CHOICES: AgentClientName[] = [
   "cursor",
   "opencode",
 ];
-const TYPE_CHOICES: AssetType[] = [
+const TYPE_CHOICES: ManagedAssetType[] = [
   "agents",
   "commands",
-  "rules",
   "skills",
   "mcp",
-  "prompts",
 ];
 
-type Mode = SyncOptions["mode"];
-
-export function parseCliArgs(argv: string[]): SyncOptions {
+export function parseCliArgs(argv: string[]): CliCommandOptions {
   const program = new Command();
+  let parsed: CliCommandOptions | null = null;
 
   program
     .name("sync-agents")
-    .description("Synchronize agent instructions across AI coding assistants")
-    .option(
-      "-m, --mode <mode>",
-      "sync mode: interactive | merge | source",
-      "interactive",
+    .description(
+      "Synchronize canonical .agents assets across AI coding assistants",
     )
-    .option(
-      "--project",
-      "sync only project files (./AGENTS.md, ./rules/*, etc.)",
+    .showHelpAfterError()
+    .exitOverride();
+
+  program
+    .command("sync")
+    .description(
+      "Bootstrap canonical .agents assets if needed and sync them to clients",
     )
-    .option("--global", "sync only global configs (~/.cursor, ~/.claude, etc.)")
-    .option("--push", "push project files to global clients")
-    .option("--pull", "pull global client files into project")
-    .option("-s, --source <client>", "source client when using --mode source")
     .option("-c, --clients <list>", "comma-separated list of clients to target")
     .option("-t, --types <list>", "comma-separated list of asset types to sync")
-    .option("--priority <list>", "client priority order (highest first)")
-    .option(
-      "--export-cursor-history",
-      "aggregate Cursor UI rules into a local file before syncing",
-    )
-    .option(
-      "--cursor-history-dest <file>",
-      "destination file for exported Cursor history (default: ~/.cursor/AGENTS.md)",
-    )
     .option("--dry-run", "preview without writing changes")
-    .option("--reset", "remove all sync-agents generated files and reset")
-    .option("--revert", "restore files from backups (undo last sync)")
-    .option("--revert-list", "show available backups")
-    .option("-v, --verbose", "verbose output");
+    .option("-v, --verbose", "verbose output")
+    .option(
+      "--link",
+      "prefer symlinks when target bytes can reuse canonical bytes",
+    )
+    .option("--copy", "always write independent copies")
+    .option(
+      "--separate-claude-md",
+      "leave Claude's CLAUDE.md unmanaged during sync",
+    )
+    .option(
+      "--bootstrap-source <client>",
+      "explicit source client when canonical bootstrap is ambiguous",
+    )
+    .action((opts) => {
+      if (opts.link && opts.copy) {
+        throw new Error("Cannot use --link and --copy together");
+      }
+      if (
+        opts.bootstrapSource &&
+        !CLIENT_CHOICES.includes(opts.bootstrapSource)
+      ) {
+        throw new Error(
+          `Invalid value: ${opts.bootstrapSource}. Allowed: ${CLIENT_CHOICES.join(", ")}`,
+        );
+      }
 
-  program.parse(argv);
+      parsed = {
+        command: "sync",
+        clients: opts.clients
+          ? parseList(opts.clients, CLIENT_CHOICES)
+          : undefined,
+        types: opts.types ? parseList(opts.types, TYPE_CHOICES) : undefined,
+        dryRun: Boolean(opts.dryRun),
+        verbose: Boolean(opts.verbose),
+        link: Boolean(opts.link),
+        copy: Boolean(opts.copy),
+        separateClaudeMd: Boolean(opts.separateClaudeMd),
+        bootstrapSource: opts.bootstrapSource,
+      };
+    });
 
-  const opts = program.opts();
+  program
+    .command("doctor")
+    .description(
+      "Inspect canonical sync health, drift, and ignored legacy inputs",
+    )
+    .option(
+      "-c, --clients <list>",
+      "comma-separated list of clients to inspect",
+    )
+    .option(
+      "-t, --types <list>",
+      "comma-separated list of asset types to inspect",
+    )
+    .option("-v, --verbose", "verbose output")
+    .action((opts) => {
+      parsed = {
+        command: "doctor",
+        clients: opts.clients
+          ? parseList(opts.clients, CLIENT_CHOICES)
+          : undefined,
+        types: opts.types ? parseList(opts.types, TYPE_CHOICES) : undefined,
+        verbose: Boolean(opts.verbose),
+      };
+    });
 
-  const mode = normalizeMode(opts.mode);
-  const scope = resolveScope(opts.project, opts.global);
-  const direction = resolveDirection(opts.push, opts.pull);
-  const selectedClients = opts.clients
-    ? parseList(opts.clients, CLIENT_CHOICES)
-    : undefined;
-  const types = opts.types ? parseList(opts.types, TYPE_CHOICES) : undefined;
-  const priority = opts.priority
-    ? parseList(opts.priority, CLIENT_CHOICES)
-    : undefined;
+  program
+    .command("restore")
+    .description("Restore sync-agents managed files from a snapshot")
+    .option("--latest", "restore the most recent snapshot")
+    .option("--list", "list available snapshots")
+    .option("--id <snapshotId>", "restore a specific snapshot")
+    .option("--dry-run", "preview without writing changes")
+    .option("-v, --verbose", "verbose output")
+    .action((opts) => {
+      const selectors = [
+        Boolean(opts.latest),
+        Boolean(opts.list),
+        Boolean(opts.id),
+      ].filter(Boolean);
+      if (selectors.length !== 1) {
+        throw new Error("restore requires one of --latest, --list, or --id");
+      }
 
-  if (mode === "source" && !opts.source) {
-    throw new Error("Source mode requires --source <client>");
+      parsed = {
+        command: "restore",
+        latest: Boolean(opts.latest),
+        list: Boolean(opts.list),
+        id: opts.id,
+        dryRun: Boolean(opts.dryRun),
+        verbose: Boolean(opts.verbose),
+      };
+    });
+
+  program.parse(argv, { from: "node" });
+
+  if (!parsed) {
+    throw new Error("A subcommand is required: sync, doctor, or restore");
   }
 
-  if (opts.source && !CLIENT_CHOICES.includes(opts.source)) {
-    throw new Error(`Unknown source client: ${opts.source}`);
-  }
-
-  if (opts.project && opts.global) {
-    throw new Error("Cannot use --project and --global together");
-  }
-
-  if (opts.push && opts.pull) {
-    throw new Error("Cannot use --push and --pull together");
-  }
-
-  return {
-    mode,
-    scope,
-    direction,
-    source: opts.source,
-    clients: selectedClients,
-    types,
-    dryRun: Boolean(opts.dryRun),
-    verbose: Boolean(opts.verbose),
-    priority,
-    exportCursorHistory: Boolean(opts.exportCursorHistory),
-    cursorHistoryDest: opts.cursorHistoryDest,
-    reset: Boolean(opts.reset),
-    revert: Boolean(opts.revert),
-    revertList: Boolean(opts.revertList),
-  } satisfies SyncOptions;
+  return parsed;
 }
 
 function parseList<T extends string>(
@@ -126,23 +159,4 @@ function parseList<T extends string>(
       }
       return item as T;
     });
-}
-
-function normalizeMode(value: string): Mode {
-  if (value === "interactive" || value === "merge" || value === "source") {
-    return value;
-  }
-  throw new Error(`Unknown mode: ${value}`);
-}
-
-function resolveScope(project?: boolean, global?: boolean): SyncScope {
-  if (project) return "project";
-  if (global) return "global";
-  return "all";
-}
-
-function resolveDirection(push?: boolean, pull?: boolean): SyncDirection {
-  if (push) return "push";
-  if (pull) return "pull";
-  return "sync";
 }

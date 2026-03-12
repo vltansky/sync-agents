@@ -38,7 +38,8 @@ const mockDefs: ClientDefinition[] = [
     assets: [
       { type: "agents", patterns: ["AGENTS.md"] },
       { type: "commands", patterns: ["command/**/*.md"] },
-      { type: "mcp", patterns: [], files: ["opencode.jsonc"] },
+      { type: "skills", patterns: ["skill/**/SKILL.md"] },
+      { type: "mcp", patterns: [], files: ["opencode.json"] },
     ],
   },
 ];
@@ -221,7 +222,7 @@ describe("path utilities", () => {
       ).toBe("mcp.json");
     });
 
-    it("should remap MCP to opencode.jsonc for opencode", () => {
+    it("should remap MCP to opencode.json for opencode", () => {
       const asset: AssetContent = {
         client: "cursor",
         type: "mcp",
@@ -234,7 +235,7 @@ describe("path utilities", () => {
       };
       expect(
         remapRelativePathForTarget(asset, "opencode", "mcp.json", mockDefs),
-      ).toBe("opencode.jsonc");
+      ).toBe("opencode.json");
     });
 
     it("should remap MCP to config.toml for codex", () => {
@@ -273,8 +274,8 @@ describe("path utilities", () => {
       expect(getTargetMcpFilename("cursor", mockDefs)).toBe("mcp.json");
     });
 
-    it("should return opencode.jsonc for opencode", () => {
-      expect(getTargetMcpFilename("opencode", mockDefs)).toBe("opencode.jsonc");
+    it("should return opencode.json for opencode", () => {
+      expect(getTargetMcpFilename("opencode", mockDefs)).toBe("opencode.json");
     });
 
     it("should return null for unknown client", () => {
@@ -286,7 +287,7 @@ describe("path utilities", () => {
     it("should return client-specific MCP filename", () => {
       expect(denormalizeMcpPath("codex", mockDefs)).toBe("config.toml");
       expect(denormalizeMcpPath("cursor", mockDefs)).toBe("mcp.json");
-      expect(denormalizeMcpPath("opencode", mockDefs)).toBe("opencode.jsonc");
+      expect(denormalizeMcpPath("opencode", mockDefs)).toBe("opencode.json");
     });
   });
 
@@ -298,9 +299,25 @@ describe("path utilities", () => {
       expect(canonicalizeRelativePath("cursor", "mcp", "mcp.json")).toBe(
         "mcp.json",
       );
-      expect(
-        canonicalizeRelativePath("opencode", "mcp", "opencode.jsonc"),
-      ).toBe("mcp.json");
+      expect(canonicalizeRelativePath("opencode", "mcp", "opencode.json")).toBe(
+        "mcp.json",
+      );
+    });
+  });
+
+  describe("OpenCode agent file mapping", () => {
+    // OpenCode uses AGENTS.md (same as Cursor/Codex)
+    // See: https://opencode.ai/docs/rules/
+    it("should preserve AGENTS.md for opencode", () => {
+      expect(canonicalizeRelativePath("opencode", "agents", "AGENTS.md")).toBe(
+        "AGENTS.md",
+      );
+    });
+
+    it("should denormalize AGENTS.md to AGENTS.md for opencode", () => {
+      expect(denormalizeRelativePath("opencode", "agents", "AGENTS.md")).toBe(
+        "AGENTS.md",
+      );
     });
   });
 

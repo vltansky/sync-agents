@@ -255,6 +255,52 @@ describe("buildSyncPlan", () => {
     expect(asset?.content).toBe("claude content");
   });
 
+  it("should skip syncing AGENTS.md to Claude when separateClaudeMd is enabled", () => {
+    const assets: AssetContent[] = [
+      {
+        client: "project",
+        type: "agents",
+        path: "/project/AGENTS.md",
+        relativePath: "AGENTS.md",
+        canonicalPath: "AGENTS.md",
+        name: "AGENTS",
+        content: "project content",
+        hash: "hash1",
+      },
+    ];
+
+    const defs: ClientDefinition[] = [
+      {
+        name: "project",
+        displayName: "Project",
+        root: "/project",
+        assets: [{ type: "agents", patterns: ["AGENTS.md"] }],
+      },
+      {
+        name: "claude",
+        displayName: "Claude",
+        root: "/claude",
+        assets: [{ type: "agents", patterns: ["CLAUDE.md"] }],
+      },
+      {
+        name: "cursor",
+        displayName: "Cursor",
+        root: "/cursor",
+        assets: [{ type: "agents", patterns: ["AGENTS.md"] }],
+      },
+    ];
+
+    const options = {
+      mode: "merge" as const,
+      separateClaudeMd: true,
+    };
+
+    const { plan } = buildSyncPlan(assets, defs, options);
+
+    expect(plan.some((entry) => entry.targetClient === "claude")).toBe(false);
+    expect(plan.some((entry) => entry.targetClient === "cursor")).toBe(true);
+  });
+
   describe("rules merging into agents", () => {
     it("should merge rules into agents for clients without rules support", () => {
       const assets: AssetContent[] = [
