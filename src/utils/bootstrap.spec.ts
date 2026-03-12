@@ -82,4 +82,21 @@ describe("getBootstrapResolution", () => {
       candidates: [claude, cursor],
     });
   });
+  it("surfaces ambiguity when bootstrap-source still matches multiple files", () => {
+    const projectCursor = makeAsset("project", "mcp", "mcp.json", "cursor");
+    projectCursor.path = "/project/.cursor/mcp.json";
+    const projectRoot = makeAsset("project", "mcp", "mcp.json", "root");
+    projectRoot.path = "/project/.mcp.json";
+
+    expect(
+      getBootstrapResolution({
+        canonicalPath: "mcp.json",
+        candidates: [projectCursor, projectRoot],
+        bootstrapSource: "project",
+      }),
+    ).toEqual({
+      status: "ambiguous",
+      candidates: [projectCursor, projectRoot],
+    });
+  });
 });

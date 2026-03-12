@@ -21,13 +21,18 @@ export function getBootstrapResolution(
   }
 
   if (bootstrapSource) {
-    const match = candidates.find((asset) => asset.client === bootstrapSource);
-    if (!match) {
+    const matches = candidates.filter(
+      (asset) => asset.client === bootstrapSource,
+    );
+    if (matches.length === 0) {
       throw new Error(
         `bootstrap-source ${bootstrapSource} is not available for ${canonicalPath}`,
       );
     }
-    return { status: "selected", asset: match };
+    if (matches.length === 1) {
+      return { status: "selected", asset: matches[0] };
+    }
+    return { status: "ambiguous", candidates: matches };
   }
 
   if (candidates.length === 1) {

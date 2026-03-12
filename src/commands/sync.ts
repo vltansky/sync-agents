@@ -156,7 +156,7 @@ async function chooseBootstrapCandidate(
     return null;
   }
 
-  return candidates.find((asset) => asset.client === choice) ?? null;
+  return candidates.find((asset) => asset.path === choice) ?? null;
 }
 
 async function resolveWriteMode(options: SyncCommandOptions): Promise<boolean> {
@@ -180,6 +180,10 @@ async function resolveWriteMode(options: SyncCommandOptions): Promise<boolean> {
     ],
     initialValue: "symlink",
   });
+
+  if (typeof mode === "symbol") {
+    throw new Error("Sync cancelled at write mode selection.");
+  }
 
   return mode === "symlink";
 }

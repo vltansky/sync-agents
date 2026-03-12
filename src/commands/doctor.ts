@@ -8,6 +8,7 @@ import {
   groupAssetsByCanonicalKey,
 } from "../utils/canonical.js";
 import { readCanonicalState } from "../utils/canonicalState.js";
+import { transformContentForClient } from "../utils/frontmatter.js";
 import type { DoctorCommandOptions } from "../types/index.js";
 
 export async function runDoctorCommand(
@@ -69,7 +70,12 @@ export async function runDoctorCommand(
       } else {
         const current = await fs.readFile(entry.path, "utf8");
         const source = await fs.readFile(entry.sourcePath, "utf8");
-        if (current !== source) {
+        const expected = transformContentForClient(
+          source,
+          entry.targetClient,
+          entry.type,
+        );
+        if (current !== expected) {
           driftedCopies.push(entry.path);
         }
       }
