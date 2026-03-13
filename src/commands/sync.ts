@@ -162,10 +162,17 @@ async function chooseBootstrapCandidate(
     );
   }
 
+  // Sort by newest first so the suggested default is the most recent
+  const sorted = [...candidates].sort((a, b) => {
+    const ta = a.modifiedAt?.getTime() ?? 0;
+    const tb = b.modifiedAt?.getTime() ?? 0;
+    return tb - ta;
+  });
+
   const choice = await select({
     message: `Select bootstrap source for ${canonicalPath}`,
     options: [
-      ...getBootstrapChoices(candidates),
+      ...getBootstrapChoices(sorted),
       { value: "__cancel__", label: "Cancel", hint: "Abort bootstrap" },
     ],
   });

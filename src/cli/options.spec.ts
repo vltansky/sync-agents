@@ -62,10 +62,19 @@ describe("parseCliArgs", () => {
     });
   });
 
-  it("rejects the legacy mode flag", () => {
-    expect(() =>
-      parseCliArgs(["node", "agsync", "--mode", "interactive"]),
-    ).toThrow(/unknown option '--mode'/i);
+  it("defaults to sync when no subcommand is given", () => {
+    const result = parseCliArgs(["node", "agsync"]);
+    expect(result).toEqual({
+      command: "sync",
+      dryRun: false,
+      verbose: false,
+      link: false,
+      copy: false,
+      separateClaudeMd: false,
+      bootstrapSource: undefined,
+      clients: undefined,
+      types: undefined,
+    });
   });
 
   it("rejects passing both --link and --copy", () => {

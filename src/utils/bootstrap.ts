@@ -39,5 +39,16 @@ export function getBootstrapResolution(
     return { status: "selected", asset: candidates[0] };
   }
 
+  // All candidates have the same content — pick the newest, no need to ask
+  const allIdentical = candidates.every((c) => c.hash === candidates[0].hash);
+  if (allIdentical) {
+    const newest = [...candidates].sort((a, b) => {
+      const ta = a.modifiedAt?.getTime() ?? 0;
+      const tb = b.modifiedAt?.getTime() ?? 0;
+      return tb - ta;
+    });
+    return { status: "selected", asset: newest[0] };
+  }
+
   return { status: "ambiguous", candidates };
 }

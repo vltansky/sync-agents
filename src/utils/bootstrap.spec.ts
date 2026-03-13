@@ -69,7 +69,22 @@ describe("getBootstrapResolution", () => {
     ).toThrow(/bootstrap-source codex is not available/i);
   });
 
-  it("surfaces ambiguity when multiple candidates exist and no source is given", () => {
+  it("auto-selects newest when all candidates have identical content", () => {
+    const shared = "identical content";
+    const claude = makeAsset("claude", "agents", "AGENTS.md", shared);
+    claude.modifiedAt = new Date("2026-01-01");
+    const cursor = makeAsset("cursor", "agents", "AGENTS.md", shared);
+    cursor.modifiedAt = new Date("2026-03-01");
+
+    expect(
+      getBootstrapResolution({
+        canonicalPath: "AGENTS.md",
+        candidates: [claude, cursor],
+      }),
+    ).toEqual({ status: "selected", asset: cursor });
+  });
+
+  it("surfaces ambiguity when candidates have different content", () => {
     const claude = makeAsset("claude", "agents", "AGENTS.md");
     const cursor = makeAsset("cursor", "agents", "AGENTS.md");
 

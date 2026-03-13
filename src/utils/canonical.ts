@@ -205,9 +205,9 @@ function normalizeCodexMetadataPath(commandTargetRelative: string): string {
 export function getBootstrapChoices(
   candidates: AssetContent[],
 ): { value: string; label: string; hint: string }[] {
-  return candidates.map((asset) => ({
+  return candidates.map((asset, i) => ({
     value: asset.path,
     label: `${asset.client}: ${asset.relativePath}`,
-    hint: asset.path,
+    hint: `${asset.path}${i === 0 ? " (newest)" : ""}`,
   }));
 }

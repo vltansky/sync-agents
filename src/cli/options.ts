@@ -31,7 +31,7 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
     .exitOverride();
 
   program
-    .command("sync")
+    .command("sync", { isDefault: true })
     .description(
       "Bootstrap canonical .agents assets if needed and sync them to clients",
     )
@@ -136,7 +136,7 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
   program.parse(argv, { from: "node" });
 
   if (!parsed) {
-    throw new Error("A subcommand is required: sync, doctor, or restore");
+    throw new Error("A subcommand is required: sync, doctor, or restore.");
   }
 
   return parsed;
