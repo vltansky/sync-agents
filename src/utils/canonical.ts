@@ -37,7 +37,9 @@ export function buildCanonicalDefinition(
 export function buildLegacyDefinitions(
   projectRoot: string,
 ): ClientDefinition[] {
-  return buildClientDefinitions(projectRoot);
+  return buildClientDefinitions(projectRoot).filter(
+    (def) => def.name !== "project",
+  );
 }
 
 export async function discoverCanonicalAssets(

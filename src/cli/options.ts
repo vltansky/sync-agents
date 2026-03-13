@@ -6,7 +6,6 @@ import type {
 } from "../types/index.js";
 
 const CLIENT_CHOICES: AgentClientName[] = [
-  "project",
   "codex",
   "claude",
   "cursor",

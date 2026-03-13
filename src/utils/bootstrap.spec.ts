@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hashContent } from "./fs.js";
 import { getBootstrapResolution } from "./bootstrap.js";
+import { buildLegacyDefinitions } from "./canonical.js";
 import type { AssetContent } from "../types/index.js";
 
 function makeAsset(
@@ -98,5 +99,12 @@ describe("getBootstrapResolution", () => {
       status: "ambiguous",
       candidates: [projectCursor, projectRoot],
     });
+  });
+});
+
+describe("buildLegacyDefinitions", () => {
+  it("excludes the project client from legacy bootstrap sources", () => {
+    const defs = buildLegacyDefinitions("/repo");
+    expect(defs.some((def) => def.name === "project")).toBe(false);
   });
 });

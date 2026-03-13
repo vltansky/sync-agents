@@ -75,13 +75,14 @@ npx sync-agents restore --latest --dry-run
 
 ## Supported Clients
 
-| Client    | Root                           | Agents       | Commands         | Skills              | MCP            |
-| --------- | ------------------------------ | ------------ | ---------------- | ------------------- | -------------- |
-| `project` | `./`                           | `AGENTS.md`  | `commands/**/*.md` | `skills/**/SKILL.md` | `.cursor/mcp.json`, `.mcp.json` |
-| `codex`   | `~/.codex`                     | `AGENTS.md`  | `prompts/**/*.md` | `skills/**/SKILL.md` | `config.toml` |
-| `claude`  | `~/.claude`                    | `CLAUDE.md`  | `commands/**/*.md` | —                   | — |
-| `cursor`  | `~/.cursor`                    | `AGENTS.md`  | `commands/**/*.md` | —                   | `mcp.json` |
-| `opencode`| `~/.config/opencode`           | `AGENTS.md`  | `command/**/*.md` | `skill/**/SKILL.md` | `opencode.json` |
+Public sync targets only home-directory clients. The repo-local `.agents/*` tree is canonical storage, not a public client target.
+
+| Client    | Root                 | Agents      | Commands                         | Skills                                | MCP            |
+| --------- | -------------------- | ----------- | -------------------------------- | ------------------------------------- | -------------- |
+| `codex`   | `~/.codex`           | `AGENTS.md` | `skills/commands/**/SKILL.md`    | `skills/**/SKILL.md`                  | `config.toml` |
+| `claude`  | `~/.claude`          | `CLAUDE.md` | `commands/**/*.md`               | —                                     | — |
+| `cursor`  | `~/.cursor`          | `AGENTS.md` | `commands/**/*.md`               | —                                     | `mcp.json` |
+| `opencode`| `~/.config/opencode` | `AGENTS.md` | `command/**/*.md`                | `skill/**/SKILL.md`                   | `opencode.json` |
 
 ## Behavior Notes
 
@@ -89,3 +90,4 @@ npx sync-agents restore --latest --dry-run
 - `CLAUDE.md` can be left unmanaged with `--separate-claude-md`.
 - Restore points are created before `sync` mutates targets.
 - Generated symlinks always point back to canonical `.agents/*` sources, not to legacy client files.
+- Public sync does not read from or write to legacy project-level command locations.

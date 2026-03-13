@@ -79,4 +79,10 @@ describe("parseCliArgs", () => {
       /restore requires one of --latest, --list, or --id/i,
     );
   });
+
+  it("rejects project as a public client target", () => {
+    expect(() =>
+      parseCliArgs(["node", "sync-agents", "sync", "--clients", "project"]),
+    ).toThrow(/Invalid value: project/i);
+  });
 });

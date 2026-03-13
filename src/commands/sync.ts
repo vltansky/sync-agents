@@ -33,7 +33,6 @@ export async function runSyncCommand(
 ): Promise<void> {
   const projectRoot = process.cwd();
   const allDefs = buildClientDefinitions(projectRoot);
-  const legacyDefs = buildLegacyDefinitions(projectRoot);
   const targetDefs = await getTargetDefinitions(allDefs, options.clients);
   const canonicalAssets = await discoverCanonicalAssets(
     projectRoot,
@@ -246,7 +245,11 @@ async function getTargetDefinitions(
       continue;
     }
 
-    if (def.name === "project" || selectedClients?.includes(def.name)) {
+    if (def.name === "project") {
+      continue;
+    }
+
+    if (selectedClients?.includes(def.name)) {
       targets.push(def);
       continue;
     }
