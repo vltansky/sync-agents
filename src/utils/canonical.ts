@@ -1,6 +1,5 @@
 import path from "node:path";
 import type {
-  AgentClientName,
   AssetContent,
   AssetType,
   ClientDefinition,
@@ -8,6 +7,7 @@ import type {
 } from "../types/index.js";
 import { buildClientDefinitions } from "../clients/definitions.js";
 import { discoverAssets } from "./discovery.js";
+import { hashContent } from "./fs.js";
 import {
   buildTargetAbsolutePath,
   remapRelativePathForTarget,
@@ -15,6 +15,8 @@ import {
 } from "./paths.js";
 import { shouldSkipTargetAsset } from "./syncFilters.js";
 import type { SyncCommandOptions, SyncPlanEntry } from "../types/index.js";
+
+const CODEX_COMMAND_METADATA = "policy:\n  allow_implicit_invocation: false\n";
 
 export function buildCanonicalDefinition(
   projectRoot: string,
@@ -149,30 +151,61 @@ export function buildFanoutPlan(
       );
       const targetPath = buildTargetAbsolutePath(def.root, targetRelative);
 
-      if (targetPath === asset.path) {
-        continue;
+      if (targetPath !== asset.path) {
+        plan.push({
+          asset,
+          targetClient: def.name,
+          targetPath,
+          targetRelativePath: targetRelative,
+          action: "create",
+          reason: "fanout",
+        });
       }
 
-      plan.push({
-        asset,
-        targetClient: def.name,
-        targetPath,
-        targetRelativePath: targetRelative,
-        action: "create",
-        reason: "fanout",
-      });
+      if (def.name === "codex" && asset.type === "commands") {
+        plan.push(
+          buildCodexCommandMetadataEntry(asset, def.root, targetRelative),
+        );
+      }
     }
   }
 
   return plan;
 }
 
+function buildCodexCommandMetadataEntry(
+  asset: AssetContent,
+  root: string,
+  commandTargetRelative: string,
+): SyncPlanEntry {
+  const metadataRelative = normalizeCodexMetadataPath(commandTargetRelative);
+  const syntheticAsset: AssetContent = {
+    ...asset,
+    content: CODEX_COMMAND_METADATA,
+    hash: hashContent(CODEX_COMMAND_METADATA),
+    name: `${asset.name}-openai-yaml`,
+  };
+
+  return {
+    asset: syntheticAsset,
+    targetClient: "codex",
+    targetPath: buildTargetAbsolutePath(root, metadataRelative),
+    targetRelativePath: metadataRelative,
+    action: "create",
+    reason: "fanout",
+  };
+}
+
+function normalizeCodexMetadataPath(commandTargetRelative: string): string {
+  return commandTargetRelative.replace(/\/SKILL\.md$/i, "/agents/openai.yaml");
+}
+
 export function getBootstrapChoices(
   candidates: AssetContent[],
-): { value: AgentClientName; label: string; hint: string }[] {
+): { value: string; label: string; hint: string }[] {
   return candidates.map((asset) => ({
-    value: asset.client,
-    label: asset.client,
+    value: asset.path,
+    label: `${asset.client}: ${asset.relativePath}`,
     hint: asset.path,
   }));
 }

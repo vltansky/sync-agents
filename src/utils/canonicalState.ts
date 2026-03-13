@@ -16,6 +16,7 @@ export interface GeneratedStateEntry {
   targetClient: AgentClientName;
   type: ManagedAssetType;
   mode: "copy" | "symlink";
+  expectedContent?: string;
 }
 
 interface CanonicalState {

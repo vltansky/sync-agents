@@ -69,12 +69,13 @@ export async function runDoctorCommand(
         await fs.access(resolved);
       } else {
         const current = await fs.readFile(entry.path, "utf8");
-        const source = await fs.readFile(entry.sourcePath, "utf8");
-        const expected = transformContentForClient(
-          source,
-          entry.targetClient,
-          entry.type,
-        );
+        const expected =
+          entry.expectedContent ??
+          transformContentForClient(
+            await fs.readFile(entry.sourcePath, "utf8"),
+            entry.targetClient,
+            entry.type,
+          );
         if (current !== expected) {
           driftedCopies.push(entry.path);
         }

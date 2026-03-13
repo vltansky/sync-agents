@@ -46,12 +46,14 @@ describe("buildClientDefinitions", () => {
       expect(codex?.root).toBe(path.join(HOME, ".codex"));
     });
 
-    it("should use prompts/ for commands (not commands/)", () => {
+    it("should support both legacy prompts and migrated command skills for Codex", () => {
       const defs = buildClientDefinitions(projectRoot);
       const codex = defs.find((d) => d.name === "codex");
       const commands = codex?.assets.find((a) => a.type === "commands");
+      const skills = codex?.assets.find((a) => a.type === "skills");
       expect(commands?.patterns).toContain("prompts/**/*.md");
-      expect(commands?.patterns).not.toContain("commands/**/*.md");
+      expect(commands?.patterns).toContain("skills/commands/**/SKILL.md");
+      expect(skills?.patterns).toContain("!skills/commands/**/SKILL.md");
     });
 
     it("should use config.toml for MCP", () => {

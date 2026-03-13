@@ -104,6 +104,16 @@ describe("path utilities", () => {
       ).toBe("commands/a/b/c/deep.md");
     });
 
+    it("should convert Codex command skills back to canonical commands", () => {
+      expect(
+        canonicalizeRelativePath(
+          "codex",
+          "commands",
+          "skills/commands/octocode/research/SKILL.md",
+        ),
+      ).toBe("commands/octocode/research.md");
+    });
+
     it("should not modify paths for other clients", () => {
       expect(
         canonicalizeRelativePath("claude", "commands", "commands/test.md"),
@@ -138,7 +148,7 @@ describe("path utilities", () => {
   });
 
   describe("remapRelativePathForTarget", () => {
-    it("should convert commands to prompts for codex", () => {
+    it("should convert commands to Codex command skills", () => {
       const asset: AssetContent = {
         client: "claude",
         type: "commands",
@@ -151,10 +161,10 @@ describe("path utilities", () => {
       };
       expect(
         remapRelativePathForTarget(asset, "codex", "commands/test.md"),
-      ).toBe("prompts/test.md");
+      ).toBe("skills/commands/test/SKILL.md");
     });
 
-    it("should preserve nested folder structure when converting commands to prompts for codex", () => {
+    it("should preserve nested folder structure when converting commands to Codex command skills", () => {
       const asset: AssetContent = {
         client: "cursor",
         type: "commands",
@@ -171,7 +181,7 @@ describe("path utilities", () => {
           "codex",
           "commands/octocode/research.md",
         ),
-      ).toBe("prompts/octocode/research.md");
+      ).toBe("skills/commands/octocode/research/SKILL.md");
     });
 
     it("should preserve deeply nested folder structure for codex", () => {
@@ -187,7 +197,7 @@ describe("path utilities", () => {
       };
       expect(
         remapRelativePathForTarget(asset, "codex", "commands/a/b/c/deep.md"),
-      ).toBe("prompts/a/b/c/deep.md");
+      ).toBe("skills/commands/a/b/c/deep/SKILL.md");
     });
 
     it("should preserve commands path for non-codex clients", () => {

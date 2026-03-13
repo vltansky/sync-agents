@@ -33,10 +33,15 @@ export function buildClientDefinitions(
       root: path.join(HOME, ".codex"),
       assets: [
         { type: "agents", patterns: ["AGENTS.md"] },
-        // Codex uses prompts/ for slash commands (not commands/)
-        { type: "commands", patterns: ["prompts/**/*.md"] },
+        {
+          type: "commands",
+          patterns: ["prompts/**/*.md", "skills/commands/**/SKILL.md"],
+        },
         { type: "rules", patterns: ["rules/**/*.rules"] },
-        { type: "skills", patterns: ["skills/**/SKILL.md"] },
+        {
+          type: "skills",
+          patterns: ["skills/**/SKILL.md", "!skills/commands/**/SKILL.md"],
+        },
         { type: "mcp", patterns: [], files: ["config.toml"] },
       ],
     },
@@ -67,22 +72,12 @@ export function buildClientDefinitions(
     {
       name: "opencode",
       displayName: "OpenCode",
-      // OpenCode uses XDG config dir: ~/.config/opencode/
       root: resolveOpenCodeRoot(),
       assets: [
-        // OpenCode uses AGENTS.md for rules/instructions
-        // See: https://opencode.ai/docs/rules/
         { type: "agents", patterns: ["AGENTS.md"] },
-        // OpenCode uses singular: command/ (not commands/)
-        // See: https://opencode.ai/docs/commands/
         { type: "commands", patterns: ["command/**/*.md"] },
-        // OpenCode rules are in AGENTS.md, not separate files
         { type: "rules", patterns: [] },
-        // OpenCode uses singular: skill/ (not skills/)
-        // See: https://opencode.ai/docs/skills/
         { type: "skills", patterns: ["skill/**/SKILL.md"] },
-        // MCP servers are configured in opencode.json under "mcp" key
-        // See: https://opencode.ai/docs/mcp-servers/
         { type: "mcp", patterns: [], files: ["opencode.json"] },
       ],
     },
@@ -99,23 +94,16 @@ export const CLIENT_ORDER: AgentClientName[] = [
   "opencode",
 ];
 
-/**
- * Check if a client supports a specific asset type.
- * A client supports an asset type if it has non-empty patterns or files for that type.
- */
 export function clientSupportsAssetType(
   def: ClientDefinition,
   type: AssetType,
 ): boolean {
   const asset = def.assets.find((a) => a.type === type);
   if (!asset) return false;
-  // Has patterns or files defined
   return (asset.patterns?.length ?? 0) > 0 || (asset.files?.length ?? 0) > 0;
 }
 
 function resolveOpenCodeRoot(): string {
-  // OpenCode follows XDG Base Directory spec
-  // Uses $XDG_CONFIG_HOME/opencode or ~/.config/opencode
   const xdgConfig = process.env.XDG_CONFIG_HOME;
   if (xdgConfig) {
     return path.join(xdgConfig, "opencode");

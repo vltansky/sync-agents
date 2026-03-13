@@ -23,7 +23,7 @@ import {
   writeCanonicalState,
   type GeneratedStateEntry,
 } from "../utils/canonicalState.js";
-import { fileExists } from "../utils/fs.js";
+import { fileExists, readFileSafe } from "../utils/fs.js";
 import { getBootstrapResolution } from "../utils/bootstrap.js";
 import { createSnapshot, restoreSnapshot } from "../utils/snapshots.js";
 import { printApplyResultLike } from "../utils/syncRuntime.js";
@@ -50,8 +50,12 @@ export async function runSyncCommand(
   const bootstrapEntries: SyncPlanEntry[] = [];
   const synthesizedCanonical = [...canonicalAssets];
 
-  for (const [key, candidates] of legacyByKey.entries()) {
-    if (canonicalByKey.has(key)) {
+  for (const [, candidates] of legacyByKey.entries()) {
+    if (
+      canonicalByKey.has(
+        `${candidates[0].type}::${candidates[0].canonicalPath ?? candidates[0].relativePath}`,
+      )
+    ) {
       continue;
     }
 
@@ -172,11 +176,7 @@ async function resolveWriteMode(options: SyncCommandOptions): Promise<boolean> {
         label: "Symlink",
         hint: "Recommended when exact bytes can be reused",
       },
-      {
-        value: "copy",
-        label: "Copy",
-        hint: "Always write independent files",
-      },
+      { value: "copy", label: "Copy", hint: "Always write independent files" },
     ],
     initialValue: "symlink",
   });
@@ -219,6 +219,7 @@ async function collectGeneratedStateEntries(
 
   for (const entry of plan) {
     const stats = await fs.lstat(entry.targetPath);
+    const sourceContent = await readFileSafe(entry.asset.path);
     generated.push({
       path: entry.targetPath,
       sourcePath: entry.asset.path,
@@ -226,6 +227,8 @@ async function collectGeneratedStateEntries(
       targetClient: entry.targetClient,
       type: entry.asset.type as GeneratedStateEntry["type"],
       mode: stats.isSymbolicLink() ? "symlink" : "copy",
+      expectedContent:
+        sourceContent === entry.asset.content ? undefined : entry.asset.content,
     });
   }
 
