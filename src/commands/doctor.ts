@@ -9,6 +9,7 @@ import {
 } from "../utils/canonical.js";
 import { readCanonicalState } from "../utils/canonicalState.js";
 import { transformContentForClient } from "../utils/frontmatter.js";
+import { formatIssueSection } from "../utils/reporting.js";
 import type { DoctorCommandOptions } from "../types/index.js";
 
 export async function runDoctorCommand(
@@ -32,29 +33,39 @@ export async function runDoctorCommand(
 
   let issues = 0;
 
-  if (ignoredCursorRules.length > 0) {
+  console.log(chalk.cyan("Doctor"));
+  console.log(`  Canonical assets: ${canonicalAssets.length}`);
+  console.log(`  Tracked generated targets: ${state.generated.length}`);
+  console.log();
+
+  const ignoredLines = formatIssueSection(
+    "Ignored legacy inputs",
+    ignoredCursorRules.map((asset) => asset.path),
+  );
+  if (ignoredLines.length > 0) {
     issues += ignoredCursorRules.length;
-    console.log(chalk.yellow("Ignored legacy inputs:"));
-    for (const asset of ignoredCursorRules) {
-      console.log(`  ${asset.path}`);
+    console.log(chalk.yellow(ignoredLines[0]));
+    for (const line of ignoredLines.slice(1)) {
+      console.log(line);
     }
-    console.log();
   }
 
   const bootstrapEligible = [...legacyKeys.entries()].filter(
     ([key]) => !canonicalKeys.has(key),
   );
-  if (bootstrapEligible.length > 0) {
+  const bootstrapLines = formatIssueSection(
+    "Missing canonical assets eligible for bootstrap",
+    bootstrapEligible.map(
+      ([key, candidates]) =>
+        `${key} <- ${candidates.map((asset) => asset.client).join(", ")}`,
+    ),
+  );
+  if (bootstrapLines.length > 0) {
     issues += bootstrapEligible.length;
-    console.log(
-      chalk.yellow("Missing canonical assets eligible for bootstrap:"),
-    );
-    for (const [key, candidates] of bootstrapEligible) {
-      console.log(
-        `  ${key} <- ${candidates.map((asset) => asset.client).join(", ")}`,
-      );
+    console.log(chalk.yellow(bootstrapLines[0]));
+    for (const line of bootstrapLines.slice(1)) {
+      console.log(line);
     }
-    console.log();
   }
 
   const brokenLinks: string[] = [];
@@ -85,24 +96,28 @@ export async function runDoctorCommand(
     }
   }
 
-  if (brokenLinks.length > 0) {
+  const brokenLines = formatIssueSection(
+    "Broken generated links/targets",
+    brokenLinks,
+  );
+  if (brokenLines.length > 0) {
     issues += brokenLinks.length;
-    console.log(chalk.red("Broken generated links/targets:"));
-    for (const file of brokenLinks) {
-      console.log(`  ${file}`);
+    console.log(chalk.red(brokenLines[0]));
+    for (const line of brokenLines.slice(1)) {
+      console.log(line);
     }
-    console.log();
   }
 
-  if (driftedCopies.length > 0) {
+  const driftLines = formatIssueSection(
+    "Generated copies drifted from canonical source",
+    driftedCopies,
+  );
+  if (driftLines.length > 0) {
     issues += driftedCopies.length;
-    console.log(
-      chalk.yellow("Generated copies drifted from canonical source:"),
-    );
-    for (const file of driftedCopies) {
-      console.log(`  ${file}`);
+    console.log(chalk.yellow(driftLines[0]));
+    for (const line of driftLines.slice(1)) {
+      console.log(line);
     }
-    console.log();
   }
 
   if (issues === 0) {

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const DEFAULT_STORE_DIR = path.join(os.homedir(), ".sync-agents", "snapshots");
+const DEFAULT_STORE_DIR = path.join(os.homedir(), ".agsync", "snapshots");
 
 interface SnapshotFileEntry {
   path: string;

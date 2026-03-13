@@ -4,6 +4,7 @@ import {
   readSnapshot,
   restoreSnapshot,
 } from "../utils/snapshots.js";
+import { formatSnapshotList } from "../utils/reporting.js";
 import type { RestoreCommandOptions } from "../types/index.js";
 
 export async function runRestoreCommand(
@@ -15,8 +16,9 @@ export async function runRestoreCommand(
       console.log(chalk.yellow("No snapshots available."));
       return;
     }
-    for (const snapshot of snapshots) {
-      console.log(`${snapshot.id} ${snapshot.createdAt}`);
+    console.log(chalk.cyan(`Snapshots (${snapshots.length})`));
+    for (const line of formatSnapshotList(snapshots)) {
+      console.log(`  ${line}`);
     }
     return;
   }
@@ -25,7 +27,11 @@ export async function runRestoreCommand(
   const snapshot = await readSnapshot(snapshotId);
 
   if (options.dryRun) {
-    console.log(chalk.yellow(`Would restore snapshot ${snapshot.id}`));
+    console.log(
+      chalk.yellow(
+        `Would restore snapshot ${snapshot.id} (${snapshot.entries.length} paths)`,
+      ),
+    );
     for (const entry of snapshot.entries) {
       console.log(`  ${entry.path} <- ${entry.state}`);
     }

@@ -23,7 +23,7 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
   let parsed: CliCommandOptions | null = null;
 
   program
-    .name("sync-agents")
+    .name("agsync")
     .description(
       "Synchronize canonical .agents assets across AI coding assistants",
     )
@@ -107,7 +107,7 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
 
   program
     .command("restore")
-    .description("Restore sync-agents managed files from a snapshot")
+    .description("Restore agsync managed files from a snapshot")
     .option("--latest", "restore the most recent snapshot")
     .option("--list", "list available snapshots")
     .option("--id <snapshotId>", "restore a specific snapshot")

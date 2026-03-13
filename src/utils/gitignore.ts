@@ -2,11 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileExists, readFileSafe } from "./fs.js";
 
-const GITIGNORE_MARKER_START = "# sync-agents generated files";
-const GITIGNORE_MARKER_END = "# end sync-agents";
+const GITIGNORE_MARKER_START = "# agsync generated files";
+const GITIGNORE_MARKER_END = "# end agsync";
 
 /**
- * Update .gitignore to include sync-agents generated files.
+ * Update .gitignore to include agsync generated files.
  * Only updates if there are project-level generated files.
  */
 export async function updateGitignore(
@@ -26,7 +26,7 @@ export async function updateGitignore(
   const gitignorePath = path.join(projectRoot, ".gitignore");
   let content = (await readFileSafe(gitignorePath)) ?? "";
 
-  // Remove existing sync-agents section
+  // Remove existing agsync section
   const startIdx = content.indexOf(GITIGNORE_MARKER_START);
   const endIdx = content.indexOf(GITIGNORE_MARKER_END);
   if (startIdx !== -1 && endIdx !== -1) {
@@ -52,7 +52,7 @@ export async function updateGitignore(
 }
 
 /**
- * Remove sync-agents section from .gitignore.
+ * Remove agsync section from .gitignore.
  */
 export async function cleanGitignore(projectRoot: string): Promise<boolean> {
   const gitignorePath = path.join(projectRoot, ".gitignore");

@@ -27,6 +27,12 @@ import { fileExists, readFileSafe } from "../utils/fs.js";
 import { getBootstrapResolution } from "../utils/bootstrap.js";
 import { createSnapshot, restoreSnapshot } from "../utils/snapshots.js";
 import { printApplyResultLike } from "../utils/syncRuntime.js";
+import {
+  buildDetailedPlanLines,
+  buildSyncPlanSummaryLines,
+  buildSyncPreflightLines,
+  formatIssueSection,
+} from "../utils/reporting.js";
 
 export async function runSyncCommand(
   options: SyncCommandOptions,
@@ -100,6 +106,15 @@ export async function runSyncCommand(
   );
   const plan = [...bootstrapEntries, ...fanoutPlan];
 
+  printPreflight({
+    canonicalCount: canonicalAssets.length,
+    bootstrapCount: bootstrapEntries.length,
+    ignoredCount: ignoredCursorRules.length,
+    targets: targetDefs.map((def) => def.name),
+    writeMode: resolvedLinkMode ? "symlink" : "copy",
+    dryRun: options.dryRun,
+    types: options.types,
+  });
   printWarnings(ignoredCursorRules);
 
   if (plan.length === 0) {
@@ -107,7 +122,7 @@ export async function runSyncCommand(
     return;
   }
 
-  printPlan(plan);
+  printPlan(plan, options.verbose, options.dryRun);
 
   if (options.dryRun) {
     return;
@@ -187,26 +202,59 @@ async function resolveWriteMode(options: SyncCommandOptions): Promise<boolean> {
   return mode === "symlink";
 }
 
-function printWarnings(ignoredCursorRules: AssetContent[]): void {
-  if (ignoredCursorRules.length === 0) {
-    return;
-  }
-
-  console.log(chalk.yellow("warn unsupported legacy inputs:"));
-  for (const asset of ignoredCursorRules) {
-    console.log(
-      chalk.yellow(
-        `  ${asset.path} :: ignored cursor rule; manage via .agents/AGENTS.md instead`,
-      ),
-    );
+function printPreflight(input: {
+  canonicalCount: number;
+  bootstrapCount: number;
+  ignoredCount: number;
+  targets: string[];
+  writeMode: "symlink" | "copy";
+  dryRun: boolean;
+  types?: SyncCommandOptions["types"];
+}): void {
+  console.log(chalk.cyan("Preflight"));
+  for (const line of buildSyncPreflightLines(input)) {
+    console.log(`  ${line}`);
   }
   console.log();
 }
 
-function printPlan(plan: SyncPlanEntry[]): void {
-  for (const entry of plan) {
-    const phase = entry.reason === "bootstrap" ? "bootstrap" : "fanout";
-    console.log(`${phase.padEnd(10)} ${entry.targetPath}`);
+function printWarnings(ignoredCursorRules: AssetContent[]): void {
+  const lines = formatIssueSection(
+    "Ignored legacy inputs",
+    ignoredCursorRules.map(
+      (asset) =>
+        `${asset.path} :: ignored cursor rule; manage via .agents/AGENTS.md instead`,
+    ),
+  );
+
+  if (lines.length === 0) {
+    return;
+  }
+
+  console.log(chalk.yellow(lines[0]));
+  for (const line of lines.slice(1)) {
+    console.log(chalk.yellow(line));
+  }
+}
+
+function printPlan(
+  plan: SyncPlanEntry[],
+  verbose: boolean,
+  dryRun: boolean,
+): void {
+  console.log(chalk.cyan("Plan"));
+  for (const line of buildSyncPlanSummaryLines(plan)) {
+    console.log(`  ${line}`);
+  }
+  console.log();
+
+  if (!verbose && !dryRun) {
+    return;
+  }
+
+  console.log(chalk.dim("Detailed paths"));
+  for (const line of buildDetailedPlanLines(plan)) {
+    console.log(chalk.dim(`  ${line}`));
   }
   console.log();
 }

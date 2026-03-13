@@ -1,11 +1,11 @@
-# sync-agents
+# agsync
 
 Synchronize canonical `.agents` assets across AI coding assistants.
 
 ## Quick Start
 
 ```bash
-npx sync-agents sync
+npx agsync sync
 ```
 
 This command:
@@ -26,7 +26,7 @@ This command:
   mcp.json
 ```
 
-`sync-agents` treats `.agents/*` as the source of truth once those files exist.
+`agsync` treats `.agents/*` as the source of truth once those files exist.
 
 ## Commands
 
@@ -35,14 +35,14 @@ This command:
 Bootstrap canonical assets if needed, then sync them to supported clients.
 
 ```bash
-npx sync-agents sync
-npx sync-agents sync --dry-run
-npx sync-agents sync --link
-npx sync-agents sync --copy
-npx sync-agents sync --separate-claude-md
-npx sync-agents sync --bootstrap-source claude
-npx sync-agents sync --clients claude,cursor
-npx sync-agents sync --types agents,mcp
+npx agsync sync
+npx agsync sync --dry-run
+npx agsync sync --link
+npx agsync sync --copy
+npx agsync sync --separate-claude-md
+npx agsync sync --bootstrap-source claude
+npx agsync sync --clients claude,cursor
+npx agsync sync --types agents,mcp
 ```
 
 Notes:
@@ -58,8 +58,8 @@ Notes:
 Inspect canonical sync health, ignored legacy inputs, broken generated targets, and canonical assets eligible for bootstrap.
 
 ```bash
-npx sync-agents doctor
-npx sync-agents doctor --verbose
+npx agsync doctor
+npx agsync doctor --verbose
 ```
 
 ### `restore`
@@ -67,10 +67,10 @@ npx sync-agents doctor --verbose
 Restore sync-managed targets from a snapshot.
 
 ```bash
-npx sync-agents restore --latest
-npx sync-agents restore --list
-npx sync-agents restore --id <snapshot-id>
-npx sync-agents restore --latest --dry-run
+npx agsync restore --latest
+npx agsync restore --list
+npx agsync restore --id <snapshot-id>
+npx agsync restore --latest --dry-run
 ```
 
 ## Supported Clients

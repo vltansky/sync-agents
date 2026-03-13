@@ -5,7 +5,7 @@ describe("parseCliArgs", () => {
   it("parses sync subcommand options", () => {
     const result = parseCliArgs([
       "node",
-      "sync-agents",
+      "agsync",
       "sync",
       "--dry-run",
       "--link",
@@ -32,7 +32,7 @@ describe("parseCliArgs", () => {
   });
 
   it("parses doctor subcommand", () => {
-    const result = parseCliArgs(["node", "sync-agents", "doctor", "--verbose"]);
+    const result = parseCliArgs(["node", "agsync", "doctor", "--verbose"]);
 
     expect(result).toEqual({
       command: "doctor",
@@ -45,7 +45,7 @@ describe("parseCliArgs", () => {
   it("parses restore subcommand", () => {
     const result = parseCliArgs([
       "node",
-      "sync-agents",
+      "agsync",
       "restore",
       "--id",
       "snapshot-123",
@@ -64,25 +64,25 @@ describe("parseCliArgs", () => {
 
   it("rejects the legacy mode flag", () => {
     expect(() =>
-      parseCliArgs(["node", "sync-agents", "--mode", "interactive"]),
+      parseCliArgs(["node", "agsync", "--mode", "interactive"]),
     ).toThrow(/unknown option '--mode'/i);
   });
 
   it("rejects passing both --link and --copy", () => {
     expect(() =>
-      parseCliArgs(["node", "sync-agents", "sync", "--link", "--copy"]),
+      parseCliArgs(["node", "agsync", "sync", "--link", "--copy"]),
     ).toThrow(/cannot use --link and --copy together/i);
   });
 
   it("requires a restore selector", () => {
-    expect(() => parseCliArgs(["node", "sync-agents", "restore"])).toThrow(
+    expect(() => parseCliArgs(["node", "agsync", "restore"])).toThrow(
       /restore requires one of --latest, --list, or --id/i,
     );
   });
 
   it("rejects project as a public client target", () => {
     expect(() =>
-      parseCliArgs(["node", "sync-agents", "sync", "--clients", "project"]),
+      parseCliArgs(["node", "agsync", "sync", "--clients", "project"]),
     ).toThrow(/Invalid value: project/i);
   });
 });

@@ -20,4 +20,4 @@
 - Cursor does **not** save those rules in `settings.json`; the History tree is the source of truth.
 - The `.md` files are plain text and safe to version-control or back up.
 - Searching within `~/Library/Application Support/Cursor/User/History` is the quickest way to locate any current rule snippet.
-- `sync-agents --export-cursor-history --cursor-history-dest "~/.cursor/AGENTS.md"` can aggregate every history rule into a single file (adjust the destination if you prefer a different path).
+- `agsync --export-cursor-history --cursor-history-dest "~/.cursor/AGENTS.md"` can aggregate every history rule into a single file (adjust the destination if you prefer a different path).

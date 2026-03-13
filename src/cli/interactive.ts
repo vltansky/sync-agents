@@ -104,7 +104,7 @@ export async function runInteractiveFlow(
   defs: ClientDefinition[],
   options: SyncOptions,
 ): Promise<InteractiveResult> {
-  intro(chalk.bold("sync-agents"));
+  intro(chalk.bold("agsync"));
 
   const scope =
     options.scope === "all" ? await selectScope() : options.scope ?? "all";

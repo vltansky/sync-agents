@@ -1,6 +1,6 @@
-# AGENTS.md — sync-agents
+# AGENTS.md — agsync
 
-Guidance for autonomous coding agents contributing to the `sync-agents` package.
+Guidance for autonomous coding agents contributing to the `agsync` package.
 
 ## TL;DR
 
@@ -14,7 +14,7 @@ Guidance for autonomous coding agents contributing to the `sync-agents` package.
 ## Project Overview
 
 - **Purpose:** synchronize agent artifacts (AGENTS, commands, prompts, rules, skills, MCP configs) across Codex, Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose, and the current project.
-- **Entry point:** `src/index.ts` (CLI executable exported via `bin.sync-agents`).
+- **Entry point:** `src/index.ts` (CLI executable exported via `bin.agsync`).
 
 ## Key Modules
 
