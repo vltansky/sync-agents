@@ -5,7 +5,10 @@ import type {
   ClientDefinition,
   ManagedAssetType,
 } from "../types/index.js";
-import { buildClientDefinitions } from "../clients/definitions.js";
+import {
+  buildClientDefinitions,
+  clientSupportsAssetType,
+} from "../clients/definitions.js";
 import { discoverAssets } from "./discovery.js";
 import { hashContent } from "./fs.js";
 import {
@@ -137,10 +140,7 @@ export function buildFanoutPlan(
         continue;
       }
 
-      const supportsType = def.assets.some(
-        (entry) => entry.type === asset.type,
-      );
-      if (!supportsType) {
+      if (!clientSupportsAssetType(def, asset.type)) {
         continue;
       }
 
