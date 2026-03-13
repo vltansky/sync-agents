@@ -255,12 +255,7 @@ const STRIP_CURSOR_KEYS_FOR: Set<AgentClientName> = new Set([
 ]);
 
 /** Clients that DON'T understand Claude command frontmatter */
-const STRIP_CLAUDE_KEYS_FOR: Set<AgentClientName> = new Set([
-  "cursor",
-  "windsurf",
-  "cline",
-  "roo",
-]);
+const STRIP_CLAUDE_KEYS_FOR: Set<AgentClientName> = new Set(["cursor"]);
 
 /**
  * Strip client-specific frontmatter keys from command content.

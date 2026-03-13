@@ -255,7 +255,7 @@ describe("mergeMcpAssets", () => {
     };
 
     const asset2: AssetContent = {
-      client: "cline",
+      client: "claude",
       type: "mcp",
       path: "/path/mcp.json",
       relativePath: "mcp.json",
@@ -311,7 +311,7 @@ describe("mergeMcpAssets", () => {
     };
 
     const asset2: AssetContent = {
-      client: "cline",
+      client: "claude",
       type: "mcp",
       path: "/path/mcp.json",
       relativePath: "mcp.json",

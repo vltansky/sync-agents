@@ -3,11 +3,11 @@ import {
   outro,
   select,
   multiselect,
-  groupMultiselect,
   confirm,
   spinner,
   note,
 } from "@clack/prompts";
+import checkboxPlus from "inquirer-checkbox-plus-plus";
 import chalk from "chalk";
 import type {
   AgentClientName,
@@ -47,6 +47,11 @@ import {
   getSimilarityLabel,
   formatRelativeTime,
 } from "../utils/similarity.js";
+import {
+  remapRelativePathForTarget,
+  buildTargetAbsolutePath,
+} from "../utils/paths.js";
+import { shouldSkipTargetAsset } from "../utils/syncFilters.js";
 
 /** Format asset count with type breakdown for display */
 function formatAssetSummary(assets: AssetContent[]): string {
@@ -93,7 +98,6 @@ export interface InteractiveResult {
   entries: SyncPlanEntry[];
   scope: SyncScope;
   direction: SyncDirection;
-  useSymlinks?: boolean;
 }
 
 export async function runInteractiveFlow(
@@ -182,6 +186,7 @@ export async function runInteractiveFlow(
     allAssets,
     conflicts,
     defs,
+    options,
   );
   if (typeof targetClients === "symbol" || targetClients.length === 0) {
     outro("Cancelled.");
@@ -194,6 +199,7 @@ export async function runInteractiveFlow(
     targetClients,
     defs,
     resolvedDirection,
+    options,
   );
 
   if (plan.length === 0) {
@@ -203,7 +209,7 @@ export async function runInteractiveFlow(
   }
 
   // Review all assets in a unified flow
-  const reviewedPlan = await reviewAllAssets(plan);
+  const reviewedPlan = await reviewAllAssets(plan, allAssets);
   if (typeof reviewedPlan === "symbol") {
     outro("Cancelled.");
     return { proceed: false, entries: [], scope, direction: resolvedDirection };
@@ -225,6 +231,37 @@ export async function runInteractiveFlow(
   }
   console.log();
 
+  if (options.link === undefined) {
+    const writeMode = await select({
+      message: "How should files be written?",
+      options: [
+        {
+          value: "symlink",
+          label: "Symlink",
+          hint: "Recommended when target can point to the source file directly",
+        },
+        {
+          value: "copy",
+          label: "Copy",
+          hint: "Write independent file copies instead of symlinks",
+        },
+      ],
+      initialValue: "symlink",
+    });
+
+    if (typeof writeMode === "symbol") {
+      outro("Cancelled.");
+      return {
+        proceed: false,
+        entries: [],
+        scope,
+        direction: resolvedDirection,
+      };
+    }
+
+    options.link = writeMode === "symlink";
+  }
+
   const confirmed = await confirm({
     message: `Apply ${reviewedPlan.length} change(s)?`,
     active: "Yes",
@@ -236,27 +273,12 @@ export async function runInteractiveFlow(
     return { proceed: false, entries: [], scope, direction: resolvedDirection };
   }
 
-  // Ask about symlinks (default: no)
-  const useSymlinks = await confirm({
-    message:
-      "Use symlinks instead of copying? (keeps files in sync automatically)",
-    active: "Yes",
-    inactive: "No",
-    initialValue: false,
-  });
-
-  if (typeof useSymlinks === "symbol") {
-    outro("Cancelled.");
-    return { proceed: false, entries: [], scope, direction: resolvedDirection };
-  }
-
   outro("Applying changes...");
   return {
     proceed: true,
     entries: reviewedPlan,
     scope,
     direction: resolvedDirection,
-    useSymlinks: useSymlinks === true,
   };
 }
 
@@ -316,6 +338,7 @@ async function selectTargetClients(
   allAssets: AssetContent[],
   conflicts: AssetConflict[],
   defs: ClientDefinition[],
+  options: Pick<SyncOptions, "separateClaudeMd">,
 ): Promise<string[] | symbol> {
   // For sync mode, filter based on scope
   // For push/pull, direction determines which clients are targets
@@ -327,15 +350,6 @@ async function selectTargetClients(
 
   // Calculate diff for each client
   function getDiffLabel(client: ScanResult): string {
-    if (!client.found) {
-      // New client - everything would be added
-      const sourceAssets = allAssets.filter((a) => a.client !== client.client);
-      const uniqueCanonicals = new Set(
-        sourceAssets.map((a) => a.canonicalPath),
-      );
-      return `new, will get +${uniqueCanonicals.size}`;
-    }
-
     // Calculate what would be created/updated for this client
     const plan = buildPlanFromConflicts(
       allAssets,
@@ -343,6 +357,7 @@ async function selectTargetClients(
       [client.client],
       defs,
       direction,
+      options,
     );
 
     const creates = plan.filter((p) => p.action === "create").length;
@@ -358,10 +373,12 @@ async function selectTargetClients(
     return `${client.assets.length} files, ${parts.join(" ")}`;
   }
 
+  const legend = chalk.dim("(+ new, ~ update)");
+
   if (direction === "push") {
     const globalClients = scanResults.filter((r) => r.client !== "project");
     const result = await multiselect({
-      message: "Sync to which clients?",
+      message: `Select target clients: ${legend}`,
       options: globalClients.map((r) => ({
         value: r.client,
         label: `${r.displayName} (${getDiffLabel(r)})`,
@@ -376,7 +393,7 @@ async function selectTargetClients(
   }
 
   const result = await multiselect({
-    message: "Sync to which clients?",
+    message: `Select target clients: ${legend}`,
     options: availableClients.map((r) => ({
       value: r.client,
       label: `${r.displayName} (${getDiffLabel(r)})`,
@@ -466,24 +483,38 @@ async function resolveConflict(
           conflict.versions[1].content,
         )
       : 1;
+
+  // Auto-resolve if nearly identical (>=95%) - use newest version
+  if (similarity >= 0.95) {
+    conflict.selectedVersion = conflict.versions[0]; // Already sorted by time, newest first
+    return "source";
+  }
+
   const similarityLabel = getSimilarityLabel(similarity);
   const similarityPct = Math.round(similarity * 100);
 
-  const options: { value: string; label: string; hint?: string }[] =
-    conflict.versions.map((v) => {
-      const clientLabel = v.client === "project" ? "local (./)" : v.client;
-      return {
-        value: v.client,
-        label: `Use ${clientLabel} (${(v.content.length / 1024).toFixed(1)}kb, ${formatRelativeTime(v.modifiedAt)})`,
-      };
-    });
+  const options: { value: string; label: string; hint?: string }[] = [];
 
+  // For MCP conflicts, put "Merge" first as the default (most common choice)
   if (canMerge) {
     options.push({
       value: "merge",
-      label: "Merge (combine both)",
+      label: "Merge (combine all servers)",
+      hint: "recommended",
     });
-  } else {
+  }
+
+  // Add client version options
+  for (const v of conflict.versions) {
+    const clientLabel = v.client === "project" ? "local (./)" : v.client;
+    options.push({
+      value: v.client,
+      label: `Use ${clientLabel} (${(v.content.length / 1024).toFixed(1)}kb, ${formatRelativeTime(v.modifiedAt)})`,
+    });
+  }
+
+  // Add rename option for non-mergeable conflicts
+  if (!canMerge) {
     options.push({
       value: "rename",
       label: "Keep both (rename)",
@@ -501,13 +532,87 @@ async function resolveConflict(
   });
 
   if (typeof result === "symbol") return result;
-  if (result === "merge") return "merge";
   if (result === "rename") return "rename";
   if (result === "skip") return "skip";
+
+  if (result === "merge") {
+    // For MCP merge, immediately ask which servers to include
+    if (conflict.type === "mcp") {
+      const selectedServers = await selectMcpServersForMerge(conflict.versions);
+      if (typeof selectedServers === "symbol") return selectedServers;
+      // Store selected servers in conflict metadata for later use
+      conflict.resolvedContent = selectedServers;
+    }
+    return "merge";
+  }
 
   conflict.selectedVersion = conflict.versions.find((v) => v.client === result);
   const isSource = result === conflict.versions[0].client;
   return isSource ? "source" : "target";
+}
+
+/**
+ * Let user select which MCP servers to include in merge
+ */
+async function selectMcpServersForMerge(
+  versions: AssetContent[],
+): Promise<string | symbol> {
+  // Collect all servers from all versions
+  const serversByName = new Map<
+    string,
+    { client: string; config: McpServerConfig }[]
+  >();
+
+  for (const version of versions) {
+    const format = detectMcpFormat(version.path);
+    const config = parseMcpConfig(version.content, format);
+    if (!config?.mcpServers) continue;
+
+    for (const [serverName, serverConfig] of Object.entries(
+      config.mcpServers,
+    )) {
+      const list = serversByName.get(serverName) ?? [];
+      list.push({ client: version.client, config: serverConfig });
+      serversByName.set(serverName, list);
+    }
+  }
+
+  if (serversByName.size === 0) {
+    return "{}"; // Empty config
+  }
+
+  // Build options for multiselect
+  const options: { value: string; label: string; hint: string }[] = [];
+  for (const [serverName, sources] of serversByName.entries()) {
+    const sourceClients = sources.map((s) => s.client).join(", ");
+    options.push({
+      value: serverName,
+      label: serverName,
+      hint: `from ${sourceClients}`,
+    });
+  }
+
+  console.log();
+  const selected = await multiselect({
+    message: "Select MCP servers to include:",
+    options,
+    initialValues: Array.from(serversByName.keys()),
+  });
+
+  if (typeof selected === "symbol") return selected;
+
+  // Build merged config with selected servers
+  const mergedServers: Record<string, McpServerConfig> = {};
+  for (const serverName of selected as string[]) {
+    const sources = serversByName.get(serverName);
+    if (sources && sources.length > 0) {
+      // Use first source's config (could add conflict resolution per-server later)
+      mergedServers[serverName] = sources[0].config;
+    }
+  }
+
+  // Serialize back to JSON
+  return JSON.stringify({ mcpServers: mergedServers }, null, 2);
 }
 
 function buildPlanFromConflicts(
@@ -516,6 +621,7 @@ function buildPlanFromConflicts(
   targetClients: string[],
   defs: ClientDefinition[],
   direction: SyncDirection,
+  options: Pick<SyncOptions, "separateClaudeMd">,
 ): SyncPlanEntry[] {
   const plan: SyncPlanEntry[] = [];
   const conflictKeys = new Set(conflicts.map((c) => c.canonicalKey));
@@ -544,8 +650,11 @@ function buildPlanFromConflicts(
     if (conflict.resolution === "skip") continue;
     if (conflict.resolution === "merge") {
       let merged: string;
-      if (conflict.type === "mcp") {
-        // Use smart MCP merging
+      if (conflict.type === "mcp" && conflict.resolvedContent) {
+        // Use pre-selected MCP servers from conflict resolution
+        merged = conflict.resolvedContent;
+      } else if (conflict.type === "mcp") {
+        // Fallback to smart MCP merging
         const mcpMerged = mergeMcpAssets(conflict.versions);
         merged =
           mcpMerged ??
@@ -601,6 +710,11 @@ function buildPlanFromConflicts(
 
       const def = defs.find((d) => d.name === clientName);
       if (!def) continue;
+      if (
+        shouldSkipTargetAsset(options, clientName as AgentClientName, asset)
+      ) {
+        continue;
+      }
 
       const supportsType = def.assets.some((a) => a.type === asset.type);
       if (!supportsType) continue;
@@ -617,13 +731,20 @@ function buildPlanFromConflicts(
         }
       }
 
-      const targetPath = `${def.root}/${canonical}`;
+      // Remap path for target client (e.g., MCP configs have different filenames per client)
+      const targetRelative = remapRelativePathForTarget(
+        asset,
+        clientName as AgentClientName,
+        canonical,
+        defs,
+      );
+      const targetPath = buildTargetAbsolutePath(def.root, targetRelative);
 
       plan.push({
         asset,
         targetClient: clientName as AgentClientName,
         targetPath,
-        targetRelativePath: canonical,
+        targetRelativePath: targetRelative,
         action: targetAssets?.has(canonical) ? "update" : "create",
       });
     }
@@ -681,6 +802,26 @@ const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   prompts: "Prompts",
 };
 
+/** Check if asset is the root instructions file (AGENTS.md at root, not in agents/ folder) */
+function isRootInstructionsFile(
+  assetType: AssetType,
+  canonicalPath: string,
+): boolean {
+  return assetType === "agents" && canonicalPath === "AGENTS.md";
+}
+
+/** Format display name for assets */
+function formatAssetDisplayName(
+  assetType: AssetType,
+  canonicalPath: string,
+): string {
+  // For agents in agents/ folder, strip the prefix for cleaner display
+  if (assetType === "agents" && canonicalPath.startsWith("agents/")) {
+    return canonicalPath.slice(7); // Remove "agents/" prefix
+  }
+  return canonicalPath;
+}
+
 /**
  * Unified review flow for all asset types
  * 1. Resolve conflicts (ask user to pick version when same asset differs)
@@ -688,100 +829,265 @@ const ASSET_TYPE_LABELS: Record<AssetType, string> = {
  */
 async function reviewAllAssets(
   plan: SyncPlanEntry[],
+  allAssets: AssetContent[],
 ): Promise<SyncPlanEntry[] | symbol> {
   if (plan.length === 0) return plan;
 
-  // Separate MCP from other assets (MCP needs special handling)
+  // Separate MCP from other assets
+  // MCP is handled during conflict resolution (merge step), so we just pass it through
   const mcpEntries = plan.filter((e) => e.asset.type === "mcp");
   const otherEntries = plan.filter((e) => e.asset.type !== "mcp");
 
-  // Step 1: Process MCP servers
-  const mcpResult = await resolveMcpConflicts(mcpEntries);
-  if (typeof mcpResult === "symbol") return mcpResult;
-
-  // Step 2: Process other assets and resolve conflicts
+  // Process other assets and resolve conflicts
   const otherResult = await resolveAssetConflicts(otherEntries);
   if (typeof otherResult === "symbol") return otherResult;
 
-  const allResolved = [...mcpResult.resolved, ...otherResult.resolved];
-  const mcpServerChoices = mcpResult.serverChoices;
+  const allResolved = [...otherResult.resolved];
 
-  // If nothing to select, return early
-  if (allResolved.length === 0) {
+  // If nothing to select (and no MCP), return early
+  if (allResolved.length === 0 && mcpEntries.length === 0) {
     return [];
   }
 
-  // If only one asset total and no conflicts were resolved, skip selection
-  if (
-    allResolved.length === 1 &&
-    !mcpResult.hadConflicts &&
-    !otherResult.hadConflicts
-  ) {
-    return buildFinalPlan(
-      allResolved,
-      mcpServerChoices,
-      mcpEntries,
-      otherEntries,
-    );
+  // If only MCP entries and no other assets, just return MCP entries
+  if (allResolved.length === 0 && mcpEntries.length > 0) {
+    return mcpEntries;
   }
 
-  // Step 3: Show grouped multiselect for all assets
-  const groupedOptions: Record<
-    string,
-    { value: string; label: string; hint?: string }[]
-  > = {};
+  // If only one non-MCP asset and no conflicts, skip selection
+  if (allResolved.length === 1 && !otherResult.hadConflicts) {
+    // Include MCP entries directly since they're already resolved
+    return [
+      ...mcpEntries,
+      ...otherEntries.filter(
+        (e) =>
+          e.asset.canonicalPath === allResolved[0].name ||
+          e.asset.relativePath === allResolved[0].name,
+      ),
+    ];
+  }
 
+  // Step 3: Separate root instructions (AGENTS.md) from sub-agents
+  const isRootInstructions = (type: AssetType, name: string) =>
+    type === "agents" &&
+    (name === "AGENTS.md" || name.toUpperCase() === "AGENTS.MD");
+
+  const byType = new Map<AssetType, ResolvedAsset[]>();
   for (const resolved of allResolved) {
-    const groupKey = ASSET_TYPE_LABELS[resolved.type];
-    if (!groupedOptions[groupKey]) {
-      groupedOptions[groupKey] = [];
+    // Skip root instructions from resolved - we'll handle them separately
+    if (isRootInstructions(resolved.type, resolved.name)) {
+      continue;
     }
-    groupedOptions[groupKey].push({
-      value: `${resolved.type}::${resolved.name}`,
-      label: resolved.name,
-      hint: resolved.label,
-    });
+    const list = byType.get(resolved.type) ?? [];
+    list.push(resolved);
+    byType.set(resolved.type, list);
   }
 
-  // Sort options within each group
-  for (const group of Object.values(groupedOptions)) {
-    group.sort((a, b) => a.label.localeCompare(b.label));
-  }
+  const selectedResolved: ResolvedAsset[] = [];
 
-  console.log();
-  const selected = await groupMultiselect({
-    message: "Select assets to sync:",
-    options: groupedOptions,
-    initialValues: allResolved.map((r) => `${r.type}::${r.name}`),
-  });
-
-  if (typeof selected === "symbol") return selected;
-
-  const selectedSet = new Set(selected as string[]);
-
-  // Filter resolved assets to only selected ones
-  const selectedResolved = allResolved.filter((r) =>
-    selectedSet.has(`${r.type}::${r.name}`),
+  // Step 4: Handle root instructions - only if there are plan entries for AGENTS.md
+  const rootPlanEntries = plan.filter((e) =>
+    isRootInstructions(
+      e.asset.type,
+      e.asset.canonicalPath ?? e.asset.relativePath,
+    ),
   );
 
-  if (selectedResolved.length === 0) {
+  if (rootPlanEntries.length > 0) {
+    // Collect all available sources for AGENTS.md
+    const rootSources = allAssets.filter(
+      (a) =>
+        a.type === "agents" &&
+        (a.canonicalPath === "AGENTS.md" || a.relativePath === "AGENTS.md"),
+    );
+
+    if (rootSources.length > 1) {
+      // Multiple sources - ask user which to use
+      console.log();
+
+      // Sort by modification time (most recent first)
+      const sortedSources = [...rootSources].sort((a, b) => {
+        const timeA = a.modifiedAt?.getTime() ?? 0;
+        const timeB = b.modifiedAt?.getTime() ?? 0;
+        return timeB - timeA; // Most recent first
+      });
+
+      const options: { value: string; label: string; hint: string }[] =
+        sortedSources.map((a) => {
+          const sizeKb = (a.content.length / 1024).toFixed(1);
+          const relTime = formatRelativeTime(a.modifiedAt);
+          return {
+            value: a.client,
+            label: a.client,
+            hint: `${sizeKb}kb, ${relTime}`,
+          };
+        });
+      options.push({ value: "__skip__", label: "Skip", hint: "" });
+
+      const sourceChoice = await select({
+        message: "AGENTS.md source:",
+        options,
+        initialValue: sortedSources[0].client, // Default to most recently modified
+      });
+
+      if (typeof sourceChoice === "symbol") return sourceChoice;
+
+      if (sourceChoice !== "__skip__") {
+        const selectedSource = rootSources.find(
+          (a) => a.client === sourceChoice,
+        );
+        if (selectedSource) {
+          const sizeKb = (selectedSource.content.length / 1024).toFixed(1);
+          selectedResolved.push({
+            name: "AGENTS.md",
+            type: "agents",
+            version: {
+              client: selectedSource.client,
+              asset: selectedSource,
+              entry: rootPlanEntries[0],
+            },
+            label: `${selectedSource.client} (${sizeKb}kb)`,
+          });
+        }
+      }
+    } else if (rootSources.length === 1) {
+      // Single source - auto-include it (already part of plan)
+      const source = rootSources[0];
+      const sizeKb = (source.content.length / 1024).toFixed(1);
+      selectedResolved.push({
+        name: "AGENTS.md",
+        type: "agents",
+        version: {
+          client: source.client,
+          asset: source,
+          entry: rootPlanEntries[0],
+        },
+        label: `${source.client} (${sizeKb}kb)`,
+      });
+    }
+  }
+
+  // Step 5: Process each type in a logical order
+  // Note: MCP is NOT included here - it's handled during conflict resolution (merge step)
+  const typeOrder: AssetType[] = [
+    "agents",
+    "commands",
+    "prompts",
+    "rules",
+    "skills",
+  ];
+
+  // Threshold for using searchable multiselect vs regular multiselect
+  // Lower threshold for better UX - searchable is always nicer for lists > 10
+  const SEARCHABLE_THRESHOLD = 10;
+
+  for (const assetType of typeOrder) {
+    const assets = byType.get(assetType);
+    if (!assets || assets.length === 0) continue;
+
+    // Deduplicate by name (same command from multiple sources should appear once)
+    const uniqueAssets = new Map<string, ResolvedAsset>();
+    for (const a of assets) {
+      if (!uniqueAssets.has(a.name)) {
+        uniqueAssets.set(a.name, a);
+      }
+    }
+    const deduped = Array.from(uniqueAssets.values());
+
+    // Sort alphabetically
+    deduped.sort((a, b) => a.name.localeCompare(b.name));
+
+    console.log();
+
+    let selectedNames: Set<string>;
+
+    if (deduped.length > SEARCHABLE_THRESHOLD) {
+      // Use searchable multiselect for large lists
+      const choices = deduped.map((a) => {
+        const displayName = formatAssetDisplayName(assetType, a.name);
+        return {
+          name: `${displayName} ${chalk.dim(`(${a.label})`)}`,
+          value: a.name,
+          short: displayName.split("/").pop() ?? displayName,
+        };
+      });
+
+      const selected = await checkboxPlus({
+        message: `${ASSET_TYPE_LABELS[assetType]} (${deduped.length}) - type to filter:`,
+        searchable: true,
+        highlight: true,
+        pageSize: 12,
+        default: deduped.map((a) => a.name), // Select all by default
+        source: async (_answers: unknown, input: string | undefined) => {
+          if (!input) return choices;
+          const lower = input.toLowerCase();
+          return choices.filter((c) => c.value.toLowerCase().includes(lower));
+        },
+      });
+
+      // checkboxPlus returns array of values or throws on cancel
+      if (!Array.isArray(selected)) {
+        return Symbol("cancel");
+      }
+      selectedNames = new Set(selected as string[]);
+    } else {
+      // Use regular multiselect for small lists
+      const options = deduped.map((a) => ({
+        value: a.name,
+        label: formatAssetDisplayName(assetType, a.name),
+        hint: a.label,
+      }));
+
+      const selected = await multiselect({
+        message: `${ASSET_TYPE_LABELS[assetType]} (${deduped.length}):`,
+        options,
+        initialValues: deduped.map((a) => a.name),
+        maxItems: 15,
+      });
+
+      if (typeof selected === "symbol") return selected;
+      selectedNames = new Set(selected as string[]);
+    }
+
+    for (const asset of deduped) {
+      if (selectedNames.has(asset.name)) {
+        selectedResolved.push(asset);
+      }
+    }
+  }
+
+  if (selectedResolved.length === 0 && mcpEntries.length === 0) {
     return [];
   }
 
-  return buildFinalPlan(
-    selectedResolved,
-    mcpServerChoices,
-    mcpEntries,
-    otherEntries,
+  // Build final plan for non-MCP entries
+  const finalPlan = buildFinalPlanSimple(selectedResolved, otherEntries);
+
+  // Add MCP entries directly (already resolved during conflict resolution)
+  return [...mcpEntries, ...finalPlan];
+}
+
+/**
+ * Build final plan from selected assets (simplified, no MCP handling)
+ */
+function buildFinalPlanSimple(
+  selectedResolved: ResolvedAsset[],
+  entries: SyncPlanEntry[],
+): SyncPlanEntry[] {
+  const selectedPaths = new Set(
+    selectedResolved.map((r) => `${r.type}::${r.name}`),
   );
+
+  return entries.filter((e) => {
+    const key = `${e.asset.type}::${e.asset.canonicalPath ?? e.asset.relativePath}`;
+    return selectedPaths.has(key);
+  });
 }
 
 /**
  * Resolve MCP server conflicts and prepare for selection
  */
-async function resolveMcpConflicts(
-  mcpEntries: SyncPlanEntry[],
-): Promise<
+async function resolveMcpConflicts(mcpEntries: SyncPlanEntry[]): Promise<
   | {
       resolved: ResolvedAsset[];
       serverChoices: Map<string, ServerVersion>;
@@ -935,17 +1241,17 @@ async function resolveAssetConflicts(
     return { resolved, hadConflicts };
   }
 
-  // Group by type and name
+  // Group by type and canonical path (not name, which may differ between clients)
   const assetVersions = new Map<string, AssetVersion[]>();
   const seenAssetClient = new Set<string>();
 
   for (const entry of entries) {
-    const assetName = entry.asset.name;
-    const key = `${entry.asset.type}::${assetName}::${entry.asset.client}`;
+    const canonicalPath = entry.asset.canonicalPath ?? entry.asset.relativePath;
+    const key = `${entry.asset.type}::${canonicalPath}::${entry.asset.client}`;
     if (seenAssetClient.has(key)) continue;
     seenAssetClient.add(key);
 
-    const mapKey = `${entry.asset.type}::${assetName}`;
+    const mapKey = `${entry.asset.type}::${canonicalPath}`;
     const versions = assetVersions.get(mapKey) ?? [];
     versions.push({
       client: entry.asset.client,
@@ -957,15 +1263,15 @@ async function resolveAssetConflicts(
 
   // Process each asset
   for (const [mapKey, versions] of assetVersions.entries()) {
-    const [assetType, ...nameParts] = mapKey.split("::");
-    const assetName = nameParts.join("::");
+    const [assetType, ...pathParts] = mapKey.split("::");
+    const canonicalPath = pathParts.join("::");
     const type = assetType as AssetType;
 
     if (versions.length === 1) {
       const version = versions[0];
       const sizeKb = (version.asset.content.length / 1024).toFixed(1);
       resolved.push({
-        name: assetName,
+        name: canonicalPath,
         type,
         version,
         label: `${version.client} (${sizeKb}kb)`,
@@ -985,19 +1291,27 @@ async function resolveAssetConflicts(
       if (!hasDifferences) {
         const sizeKb = (first.asset.content.length / 1024).toFixed(1);
         resolved.push({
-          name: assetName,
+          name: canonicalPath,
           type,
           version: first,
           label: `${versions.map((v) => v.client).join(", ")} (${sizeKb}kb)`,
         });
       } else {
         hadConflicts = true;
+
+        // Sort by modification time (most recent first)
+        const sortedVersions = [...versions].sort((a, b) => {
+          const timeA = a.asset.modifiedAt?.getTime() ?? 0;
+          const timeB = b.asset.modifiedAt?.getTime() ?? 0;
+          return timeB - timeA;
+        });
+
         // Show conflict
         console.log();
         console.log(
-          chalk.yellow(`"${assetName}" (${type}) differs across clients:`),
+          chalk.yellow(`"${canonicalPath}" (${type}) differs across clients:`),
         );
-        for (const version of versions) {
+        for (const version of sortedVersions) {
           const sizeKb = (version.asset.content.length / 1024).toFixed(1);
           const relTime = formatRelativeTime(version.asset.modifiedAt);
           console.log(
@@ -1006,8 +1320,8 @@ async function resolveAssetConflicts(
         }
 
         const similarity = calculateSimilarity(
-          first.asset.content,
-          versions[1].asset.content,
+          sortedVersions[0].asset.content,
+          sortedVersions[1].asset.content,
         );
         console.log(
           chalk.dim(
@@ -1016,9 +1330,10 @@ async function resolveAssetConflicts(
         );
 
         const versionChoice = await select({
-          message: `Which "${assetName}" to use?`,
+          message: `Which "${canonicalPath}" to use?`,
+          initialValue: sortedVersions[0].client, // Default to most recently modified
           options: [
-            ...versions.map((v) => ({
+            ...sortedVersions.map((v) => ({
               value: v.client,
               label: `${v.client} (${(v.asset.content.length / 1024).toFixed(1)}kb)`,
               hint: formatRelativeTime(v.asset.modifiedAt),
@@ -1030,11 +1345,13 @@ async function resolveAssetConflicts(
         if (typeof versionChoice === "symbol") return versionChoice;
 
         if (versionChoice !== "__skip__") {
-          const selected = versions.find((v) => v.client === versionChoice);
+          const selected = sortedVersions.find(
+            (v) => v.client === versionChoice,
+          );
           if (selected) {
             const sizeKb = (selected.asset.content.length / 1024).toFixed(1);
             resolved.push({
-              name: assetName,
+              name: canonicalPath,
               type,
               version: selected,
               label: `${selected.client} (${sizeKb}kb)`,
@@ -1105,7 +1422,7 @@ function buildFinalPlan(
     }
   }
 
-  // Handle other entries
+  // Handle other entries - use canonical paths for matching (r.name is now canonicalPath)
   const selectedOther = new Map<string, ResolvedAsset>();
   for (const r of selectedResolved) {
     if (r.type !== "mcp") {
@@ -1115,7 +1432,8 @@ function buildFinalPlan(
 
   const processedTargets = new Set<string>();
   for (const entry of otherEntries) {
-    const key = `${entry.asset.type}::${entry.asset.name}`;
+    const canonicalPath = entry.asset.canonicalPath ?? entry.asset.relativePath;
+    const key = `${entry.asset.type}::${canonicalPath}`;
     const resolved = selectedOther.get(key);
     if (!resolved) continue;
 

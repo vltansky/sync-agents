@@ -2,18 +2,8 @@ export type AgentClientName =
   | "project"
   | "codex"
   | "claude"
-  | "claudeDesktop"
   | "cursor"
-  | "opencode"
-  | "windsurf"
-  | "cline"
-  | "roo"
-  | "gemini"
-  | "vscode"
-  | "antigravity"
-  | "goose"
-  | "mcphub"
-  | "cherrystudio";
+  | "opencode";
 
 export type AssetType =
   | "agents"
@@ -22,6 +12,8 @@ export type AssetType =
   | "skills"
   | "mcp"
   | "prompts";
+
+export type ManagedAssetType = "agents" | "commands" | "skills" | "mcp";
 
 export type SyncScope = "project" | "global" | "all";
 export type SyncDirection = "push" | "pull" | "sync";
@@ -73,11 +65,45 @@ export interface SyncOptions {
   priority?: AgentClientName[];
   exportCursorHistory?: boolean;
   cursorHistoryDest?: string;
-  link?: boolean;
   reset?: boolean;
   revert?: boolean;
   revertList?: boolean;
+  link?: boolean;
+  separateClaudeMd?: boolean;
 }
+
+export interface SyncCommandOptions {
+  command: "sync";
+  clients?: AgentClientName[];
+  types?: ManagedAssetType[];
+  dryRun: boolean;
+  verbose: boolean;
+  link: boolean;
+  copy: boolean;
+  separateClaudeMd: boolean;
+  bootstrapSource?: AgentClientName;
+}
+
+export interface DoctorCommandOptions {
+  command: "doctor";
+  clients?: AgentClientName[];
+  types?: ManagedAssetType[];
+  verbose: boolean;
+}
+
+export interface RestoreCommandOptions {
+  command: "restore";
+  latest: boolean;
+  list: boolean;
+  id?: string;
+  dryRun: boolean;
+  verbose: boolean;
+}
+
+export type CliCommandOptions =
+  | SyncCommandOptions
+  | DoctorCommandOptions
+  | RestoreCommandOptions;
 
 export interface SyncPlanEntry {
   asset: AssetContent;

@@ -1,135 +1,93 @@
 # sync-agents
 
-Synchronize `AGENTS.md`, commands, rules, skills, and MCP configs across AI coding assistants (Codex, Claude Code, Cursor, Windsurf, Cline, Roo Code, Gemini CLI, OpenCode, VS Code, Antigravity, Goose) plus your current project.
+Synchronize canonical `.agents` assets across AI coding assistants.
 
 ## Quick Start
 
 ```bash
-npx sync-agents
+npx sync-agents sync
 ```
 
-This launches an interactive wizard that:
+This command:
 
-1. Asks what to sync (project files, global configs, or both)
-2. Scans all available clients
-3. Shows conflicts and lets you choose how to resolve them
-4. Lets you pick sync direction (push/pull)
-5. Previews changes before applying
+1. Reads canonical assets from `.agents/`
+2. Bootstraps missing canonical assets from legacy client files when possible
+3. Warns about unsupported legacy inputs like `~/.cursor/rules/*`
+4. Fans out canonical assets to client-specific locations
+5. Creates a restore point before mutating targets
 
-## Use Cases
+## Canonical Layout
 
-### Push project rules to all your tools
+```text
+.agents/
+  AGENTS.md
+  commands/
+  skills/
+  mcp.json
+```
+
+`sync-agents` treats `.agents/*` as the source of truth once those files exist.
+
+## Commands
+
+### `sync`
+
+Bootstrap canonical assets if needed, then sync them to supported clients.
 
 ```bash
-npx sync-agents --project --push
+npx sync-agents sync
+npx sync-agents sync --dry-run
+npx sync-agents sync --link
+npx sync-agents sync --copy
+npx sync-agents sync --separate-claude-md
+npx sync-agents sync --bootstrap-source claude
+npx sync-agents sync --clients claude,cursor
+npx sync-agents sync --types agents,mcp
 ```
 
-Your `./AGENTS.md` and `./rules/*` become the source of truth for all AI assistants.
+Notes:
 
-### Pull global configs into your project
+- `--link` prefers symlinks when target bytes can exactly reuse canonical bytes.
+- `--copy` always writes independent copies.
+- If neither flag is provided and the terminal is interactive, `sync` asks which write mode to use.
+- `--separate-claude-md` leaves `CLAUDE.md` unmanaged for that run.
+- If bootstrap is ambiguous, interactive sync asks which client to use; non-interactive sync requires `--bootstrap-source`.
+
+### `doctor`
+
+Inspect canonical sync health, ignored legacy inputs, broken generated targets, and canonical assets eligible for bootstrap.
 
 ```bash
-npx sync-agents --project --pull
+npx sync-agents doctor
+npx sync-agents doctor --verbose
 ```
 
-Copy rules from `~/.claude`, `~/.cursor`, etc. into your project.
+### `restore`
 
-### Sync only global configs
+Restore sync-managed targets from a snapshot.
 
 ```bash
-npx sync-agents --global
+npx sync-agents restore --latest
+npx sync-agents restore --list
+npx sync-agents restore --id <snapshot-id>
+npx sync-agents restore --latest --dry-run
 ```
-
-Keep `~/.claude`, `~/.cursor`, `~/.codex`, etc. in sync with each other (doesn't touch project files).
-
-### Migrate from Cursor
-
-```bash
-npx sync-agents --export-cursor-history
-```
-
-Exports Cursor's "Rules & Config" history to `~/.cursor/AGENTS.md`, then you can sync it everywhere.
-
-## CLI Options
-
-| Flag                      | Description                                                     |
-| ------------------------- | --------------------------------------------------------------- |
-| `--project`               | Sync only project files (`./AGENTS.md`, `./rules/*`, etc.)      |
-| `--global`                | Sync only global configs (`~/.cursor`, `~/.claude`, etc.)       |
-| `--push`                  | Push project files → global clients                             |
-| `--pull`                  | Pull global client files → project                              |
-| `-m, --mode`              | `interactive` (default), `merge`, or `source`                   |
-| `-s, --source`            | Source client when using `--mode source`                        |
-| `-c, --clients`           | Comma-separated client list                                     |
-| `-t, --types`             | Filter asset types (`agents,commands,rules,skills,mcp,prompts`) |
-| `--priority`              | Client precedence order when merging                            |
-| `--dry-run`               | Preview without writing                                         |
-| `--link`                  | Use symlinks instead of copying files                           |
-| `--reset`                 | Remove all sync-agents generated files and reset                |
-| `-v, --verbose`           | Verbose output                                                  |
-| `--export-cursor-history` | Export Cursor UI history to `~/.cursor/AGENTS.md`               |
-| `--cursor-history-dest`   | Custom destination for Cursor history export                    |
-
-## How It Works
-
-1. **Scan** - Finds assets in project and global client directories
-2. **Detect conflicts** - Groups files by type and path, identifies different versions
-3. **Resolve** - For each conflict, choose: use version A, use version B, merge, or skip
-4. **Plan** - Builds a list of files to create/update
-5. **Apply** - Writes files to target locations
 
 ## Supported Clients
 
-| Client         | Location                                         | Notes                      |
-| -------------- | ------------------------------------------------ | -------------------------- |
-| `project`      | `./`                                             | Current working directory  |
-| `codex`        | `~/.codex`                                       |                            |
-| `claude`       | `~/.claude`                                      | `CLAUDE.md` ↔ `AGENTS.md` |
-| `claudeDesktop`| `~/Library/Application Support/Claude`           | MCP config only            |
-| `cursor`       | `~/.cursor`                                      | Supports `.mdc` rules      |
-| `opencode`     | `~/.opencode`                                    |                            |
-| `windsurf`     | `~/.codeium/windsurf`                            |                            |
-| `cline`        | `~/.cline`                                       |                            |
-| `roo`          | `~/.roo`                                         |                            |
-| `gemini`       | `~/.gemini`                                      |                            |
-| `vscode`       | `~/Library/Application Support/Code/User`        |                            |
-| `antigravity`  | `~/Library/Application Support/Antigravity/User` |                            |
-| `goose`        | `~/.config/goose`                                |                            |
-| `mcphub`       | `~/.config/mcphub`                               | MCP config only            |
-| `cherrystudio` | `~/.config/cherrystudio`                         | MCP config only            |
+Public sync targets only home-directory clients. The repo-local `.agents/*` tree is canonical storage, not a public client target.
 
-## Examples
+| Client    | Root                 | Agents      | Commands                         | Skills                                | MCP            |
+| --------- | -------------------- | ----------- | -------------------------------- | ------------------------------------- | -------------- |
+| `codex`   | `~/.codex`           | `AGENTS.md` | `skills/commands/**/SKILL.md`    | `skills/**/SKILL.md`                  | `config.toml` |
+| `claude`  | `~/.claude`          | `CLAUDE.md` | `commands/**/*.md`               | —                                     | — |
+| `cursor`  | `~/.cursor`          | `AGENTS.md` | `commands/**/*.md`               | —                                     | `mcp.json` |
+| `opencode`| `~/.config/opencode` | `AGENTS.md` | `command/**/*.md`                | `skill/**/SKILL.md`                   | `opencode.json` |
 
-Sync commands between Claude and Cursor only:
+## Behavior Notes
 
-```bash
-npx sync-agents --mode merge --clients claude,cursor --types commands
-```
-
-Use Claude as the source of truth:
-
-```bash
-npx sync-agents --mode source --source claude
-```
-
-Preview what would change:
-
-```bash
-npx sync-agents --dry-run
-```
-
-Reset all sync-agents generated files:
-
-```bash
-npx sync-agents --reset
-```
-
-## Roadmap
-
-Planned features for future versions:
-
-- [ ] **Agent hooks sync** — Sync lifecycle hooks (PreToolUse, afterFileEdit, etc.) to `.claude/settings.json` and `.cursor/hooks.json`
-- [ ] **Transforms** — Content placeholders like `__TIMESTAMP__`, `__STRUCTURE__`, `__ENV_VAR__`
-- [ ] **Migrate command** — Consolidate existing configs into a canonical `.agents/` directory
-- [ ] **Skill installer** — Install skills from local path, git URL, or HTTPS URL
-- [ ] **Canonical mode** — Use `.agents/` as single source of truth with symlinks (like dotagents)
+- `~/.cursor/rules/*` is treated as an unsupported legacy input. It is reported by `sync`/`doctor`, but never imported into canonical storage.
+- `CLAUDE.md` can be left unmanaged with `--separate-claude-md`.
+- Restore points are created before `sync` mutates targets.
+- Generated symlinks always point back to canonical `.agents/*` sources, not to legacy client files.
+- Public sync does not read from or write to legacy project-level command locations.
