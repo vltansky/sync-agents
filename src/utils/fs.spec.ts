@@ -11,7 +11,7 @@ import {
 } from "./fs.js";
 
 describe("fs utilities", () => {
-  const testDir = path.join(os.tmpdir(), "agsync-fs-test");
+  const testDir = path.join(os.tmpdir(), "link-agents-fs-test");
 
   beforeEach(async () => {
     await fs.rm(testDir, { recursive: true, force: true });

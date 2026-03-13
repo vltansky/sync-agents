@@ -5,8 +5,8 @@ import os from "node:os";
 import { listBackups, listAvailableBackups } from "./revert.js";
 
 describe("revert", () => {
-  const testDir = path.join(os.tmpdir(), "agsync-revert-test");
-  const manifestDir = path.join(os.homedir(), ".agsync");
+  const testDir = path.join(os.tmpdir(), "link-agents-revert-test");
+  const manifestDir = path.join(os.homedir(), ".link-agents");
   const manifestPath = path.join(manifestDir, "manifest.json");
   let originalManifest: string | null = null;
 

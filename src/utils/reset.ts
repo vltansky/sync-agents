@@ -6,7 +6,7 @@ import { fileExists } from "./fs.js";
 import { getManifestFiles, clearManifest } from "./manifest.js";
 import { cleanGitignore } from "./gitignore.js";
 
-const SYNC_AGENTS_DIR = path.join(os.homedir(), ".agsync");
+const SYNC_AGENTS_DIR = path.join(os.homedir(), ".link-agents");
 
 export interface ResetResult {
   removedFiles: string[];
@@ -16,7 +16,7 @@ export interface ResetResult {
 }
 
 /**
- * Reset agsync: remove all generated files, backups, and manifest.
+ * Reset link-agents: remove all generated files, backups, and manifest.
  */
 export async function performReset(
   projectRoot: string,
@@ -32,7 +32,7 @@ export async function performReset(
   // Get files from manifest
   const manifestFiles = await getManifestFiles();
 
-  console.log(chalk.yellow("Resetting agsync..."));
+  console.log(chalk.yellow("Resetting link-agents..."));
 
   // Remove generated files
   for (const file of manifestFiles) {
@@ -53,7 +53,7 @@ export async function performReset(
     }
   }
 
-  // Remove .agsync directory (includes backups and manifest)
+  // Remove .link-agents directory (includes backups and manifest)
   if (await fileExists(SYNC_AGENTS_DIR)) {
     if (options.dryRun) {
       console.log(chalk.dim(`  would remove: ${SYNC_AGENTS_DIR}`));

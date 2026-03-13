@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentClientName, ManagedAssetType } from "../types/index.js";
 
-const STATE_PATH = path.join(os.homedir(), ".agsync", "canonical-state.json");
+const STATE_PATH = path.join(
+  os.homedir(),
+  ".link-agents",
+  "canonical-state.json",
+);
 
 export interface GeneratedStateEntry {
   path: string;

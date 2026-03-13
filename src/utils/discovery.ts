@@ -48,9 +48,22 @@ export async function discoverAssets(
         if (!exists) {
           continue;
         }
-        const content = await readFileSafe(absPath);
+        let content = await readFileSafe(absPath);
         if (content === null) {
           continue;
+        }
+
+        if (assetDef.jsonKey) {
+          try {
+            const parsed = JSON.parse(content);
+            const value = parsed[assetDef.jsonKey];
+            if (value === undefined || value === null) {
+              continue;
+            }
+            content = JSON.stringify(value, null, 2);
+          } catch {
+            continue;
+          }
         }
         const modifiedAt = await getFileMtime(absPath);
         const relativeRaw =

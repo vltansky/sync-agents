@@ -39,7 +39,12 @@ export function buildClientDefinitions(
         { type: "commands", patterns: ["commands/**/*.md"] },
         { type: "rules", patterns: [] },
         { type: "skills", patterns: [] },
-        { type: "mcp", patterns: [], files: [] },
+        {
+          type: "mcp",
+          patterns: [],
+          files: ["../.claude.json"],
+          jsonKey: "mcpServers",
+        },
       ],
     },
     {

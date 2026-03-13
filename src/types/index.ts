@@ -51,6 +51,8 @@ export interface AssetPattern {
   type: AssetType;
   patterns: string[];
   files?: string[];
+  /** When set, read this JSON key from the file instead of the whole file */
+  jsonKey?: string;
 }
 
 export interface SyncOptions {

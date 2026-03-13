@@ -10,7 +10,7 @@ import {
 } from "./snapshots.js";
 
 describe("snapshots", () => {
-  const root = path.join(os.tmpdir(), "agsync-snapshots-test");
+  const root = path.join(os.tmpdir(), "link-agents-snapshots-test");
   const targetsDir = path.join(root, "targets");
   const storeDir = path.join(root, "store");
 

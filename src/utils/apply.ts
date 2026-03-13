@@ -15,7 +15,7 @@ import {
 import { transformContentForClient } from "./frontmatter.js";
 import { updateManifest, pruneStaleFiles } from "./manifest.js";
 
-const BACKUP_DIR = path.join(os.homedir(), ".agsync", "backups");
+const BACKUP_DIR = path.join(os.homedir(), ".link-agents", "backups");
 const MAX_BACKUPS = 10;
 
 export interface ApplyResult {

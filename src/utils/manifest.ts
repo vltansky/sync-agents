@@ -3,7 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { fileExists, readFileSafe } from "./fs.js";
 
-const MANIFEST_DIR = path.join(os.homedir(), ".agsync");
+const MANIFEST_DIR = path.join(os.homedir(), ".link-agents");
 const MANIFEST_PATH = path.join(MANIFEST_DIR, "manifest.json");
 
 interface Manifest {

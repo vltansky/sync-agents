@@ -5,7 +5,7 @@ describe("parseCliArgs", () => {
   it("parses sync subcommand options", () => {
     const result = parseCliArgs([
       "node",
-      "agsync",
+      "link-agents",
       "sync",
       "--dry-run",
       "--link",
@@ -29,7 +29,7 @@ describe("parseCliArgs", () => {
   });
 
   it("parses doctor subcommand", () => {
-    const result = parseCliArgs(["node", "agsync", "doctor", "--verbose"]);
+    const result = parseCliArgs(["node", "link-agents", "doctor", "--verbose"]);
 
     expect(result).toEqual({
       command: "doctor",
@@ -41,7 +41,7 @@ describe("parseCliArgs", () => {
   it("parses restore subcommand", () => {
     const result = parseCliArgs([
       "node",
-      "agsync",
+      "link-agents",
       "restore",
       "--id",
       "snapshot-123",
@@ -59,7 +59,7 @@ describe("parseCliArgs", () => {
   });
 
   it("defaults to sync when no subcommand is given", () => {
-    const result = parseCliArgs(["node", "agsync"]);
+    const result = parseCliArgs(["node", "link-agents"]);
     expect(result).toEqual({
       command: "sync",
       dryRun: false,
@@ -74,12 +74,12 @@ describe("parseCliArgs", () => {
 
   it("rejects passing both --link and --copy", () => {
     expect(() =>
-      parseCliArgs(["node", "agsync", "sync", "--link", "--copy"]),
+      parseCliArgs(["node", "link-agents", "sync", "--link", "--copy"]),
     ).toThrow(/cannot use --link and --copy together/i);
   });
 
   it("requires a restore selector", () => {
-    expect(() => parseCliArgs(["node", "agsync", "restore"])).toThrow(
+    expect(() => parseCliArgs(["node", "link-agents", "restore"])).toThrow(
       /restore requires one of --latest, --list, or --id/i,
     );
   });
