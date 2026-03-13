@@ -23,7 +23,7 @@ function makeEntry(
         : `${type}/demo.md`;
   return {
     asset: {
-      client: "project",
+      client: "canonical",
       type,
       path: `/repo/.agents/${canonicalPath}`,
       relativePath: canonicalPath,
@@ -64,7 +64,7 @@ describe("reporting", () => {
 
   it("groups sync plan lines by phase and client", () => {
     const lines = buildSyncPlanSummaryLines([
-      makeEntry("agents", "project", "/repo/.agents/AGENTS.md", "bootstrap"),
+      makeEntry("agents", "canonical", "/repo/.agents/AGENTS.md", "bootstrap"),
       makeEntry(
         "commands",
         "codex",
@@ -85,7 +85,12 @@ describe("reporting", () => {
   it("formats detailed plan lines", () => {
     expect(
       buildDetailedPlanLines([
-        makeEntry("agents", "project", "/repo/.agents/AGENTS.md", "bootstrap"),
+        makeEntry(
+          "agents",
+          "canonical",
+          "/repo/.agents/AGENTS.md",
+          "bootstrap",
+        ),
         makeEntry(
           "commands",
           "claude",

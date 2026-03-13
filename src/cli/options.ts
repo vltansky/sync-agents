@@ -1,3 +1,4 @@
+import os from "node:os";
 import { Command } from "commander";
 import type {
   AgentClientName,
@@ -48,6 +49,10 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
       "leave Claude's CLAUDE.md unmanaged during sync",
     )
     .option(
+      "--root <path>",
+      "root directory for canonical .agents store (default: $HOME)",
+    )
+    .option(
       "--bootstrap-source <client>",
       "explicit source client when canonical bootstrap is ambiguous",
     )
@@ -66,6 +71,7 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
 
       parsed = {
         command: "sync",
+        root: opts.root ?? os.homedir(),
         types: opts.types ? parseList(opts.types, TYPE_CHOICES) : undefined,
         dryRun: Boolean(opts.dryRun),
         verbose: Boolean(opts.verbose),
@@ -85,10 +91,15 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
       "-t, --types <list>",
       "comma-separated list of asset types to inspect",
     )
+    .option(
+      "--root <path>",
+      "root directory for canonical .agents store (default: $HOME)",
+    )
     .option("-v, --verbose", "verbose output")
     .action((opts) => {
       parsed = {
         command: "doctor",
+        root: opts.root ?? os.homedir(),
         types: opts.types ? parseList(opts.types, TYPE_CHOICES) : undefined,
         verbose: Boolean(opts.verbose),
       };

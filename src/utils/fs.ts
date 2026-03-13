@@ -33,6 +33,16 @@ export async function writeFileSafe(
   contents: string,
 ): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
+  // Remove existing symlink to avoid ELOOP and prevent writing through to
+  // the symlink target (which would modify a different client's file).
+  try {
+    const stats = await fs.lstat(filePath);
+    if (stats.isSymbolicLink()) {
+      await fs.unlink(filePath);
+    }
+  } catch {
+    // File doesn't exist — nothing to unlink
+  }
   await fs.writeFile(filePath, contents, "utf8");
 }
 

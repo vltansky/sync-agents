@@ -1,4 +1,5 @@
 import type { AgentClientName, AssetType } from "../types/index.js";
+import { parseMcpConfig, serializeMcpConfig } from "./mcp.js";
 
 interface FrontmatterData {
   [key: string]: unknown;
@@ -300,6 +301,46 @@ function stripClientSpecificFrontmatter(
 }
 
 /**
+ * Transform MCP config from canonical (mcpServers) to OpenCode format (mcp).
+ * OpenCode expects: { mcp: { name: { type, command: [...], enabled, environment? } } }
+ */
+function transformMcpForOpenCode(content: string): string {
+  const parsed = parseMcpConfig(content, "json");
+  if (!parsed?.mcpServers) return content;
+
+  const mcp: Record<string, unknown> = {};
+  for (const [name, server] of Object.entries(parsed.mcpServers)) {
+    if (server.url) {
+      mcp[name] = {
+        type: "remote",
+        url: server.url,
+        enabled: true,
+        ...(server.env ? { environment: server.env } : {}),
+      };
+    } else if (server.command) {
+      mcp[name] = {
+        type: "local",
+        command: [server.command, ...(server.args ?? [])],
+        enabled: true,
+        ...(server.env ? { environment: server.env } : {}),
+      };
+    }
+  }
+
+  return JSON.stringify({ mcp }, null, 2);
+}
+
+/**
+ * Transform MCP config from canonical JSON (mcpServers) to Codex TOML (mcp_servers).
+ */
+function transformMcpForCodex(content: string): string {
+  const parsed = parseMcpConfig(content, "json");
+  if (!parsed?.mcpServers) return content;
+
+  return serializeMcpConfig(parsed, "toml");
+}
+
+/**
  * Transform content based on target client requirements.
  */
 export function transformContentForClient(
@@ -310,6 +351,14 @@ export function transformContentForClient(
   // Transform agents for OpenCode
   if (targetClient === "opencode" && assetType === "agents") {
     return transformForOpenCode(content);
+  }
+
+  // Transform MCP for client-specific formats
+  if (targetClient === "opencode" && assetType === "mcp") {
+    return transformMcpForOpenCode(content);
+  }
+  if (targetClient === "codex" && assetType === "mcp") {
+    return transformMcpForCodex(content);
   }
 
   if (assetType === "commands") {

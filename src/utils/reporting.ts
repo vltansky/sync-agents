@@ -1,4 +1,10 @@
-import type { ManagedAssetType, SyncPlanEntry } from "../types/index.js";
+import os from "node:os";
+import path from "node:path";
+import type {
+  AppliedEntry,
+  ManagedAssetType,
+  SyncPlanEntry,
+} from "../types/index.js";
 
 const TYPE_ORDER: ManagedAssetType[] = ["agents", "commands", "skills", "mcp"];
 const TYPE_LABELS: Record<ManagedAssetType, string> = {
@@ -114,4 +120,80 @@ function formatEntrySummary(entries: SyncPlanEntry[]): string {
 
 function isManagedAssetType(type: string): type is ManagedAssetType {
   return TYPE_ORDER.includes(type as ManagedAssetType);
+}
+
+export function buildSyncTreeLines(
+  entries: AppliedEntry[],
+  clientRoots: Map<string, string>,
+): string[] {
+  if (entries.length === 0) return [];
+
+  const byClient = new Map<string, AppliedEntry[]>();
+  for (const entry of entries) {
+    const bucket = byClient.get(entry.targetClient) ?? [];
+    bucket.push(entry);
+    byClient.set(entry.targetClient, bucket);
+  }
+
+  const clientOrder = [
+    "canonical",
+    ...[...byClient.keys()].filter((k) => k !== "canonical").sort(),
+  ].filter((k) => byClient.has(k));
+
+  const roots = clientOrder.map((c) => abbreviateHome(clientRoots.get(c) ?? c));
+  const maxRootLen = Math.max(...roots.map((r) => r.length + 1)); // +1 for trailing /
+  const padWidth = Math.max(maxRootLen + 2, 24);
+
+  const lines: string[] = [];
+
+  for (let i = 0; i < clientOrder.length; i++) {
+    const client = clientOrder[i];
+    const clientEntries = byClient.get(client)!;
+    const rootDisplay = roots[i] + "/";
+
+    const typeCounts = new Map<ManagedAssetType, number>();
+    for (const entry of clientEntries) {
+      if (isManagedAssetType(entry.assetType)) {
+        typeCounts.set(
+          entry.assetType,
+          (typeCounts.get(entry.assetType) ?? 0) + 1,
+        );
+      }
+    }
+
+    const typeStr = TYPE_ORDER.filter((t) => (typeCounts.get(t) ?? 0) > 0)
+      .map((t) => `${TYPE_LABELS[t]} ${typeCounts.get(t)}`)
+      .join(", ");
+
+    let modeStr = "";
+    if (client !== "canonical") {
+      const linked = clientEntries.filter(
+        (e) => e.writeMode === "symlink",
+      ).length;
+      const copied = clientEntries.filter((e) => e.writeMode === "copy").length;
+      const parts: string[] = [];
+      if (linked > 0) parts.push(`${linked} linked`);
+      if (copied > 0) parts.push(`${copied} copied`);
+      if (parts.length > 0) {
+        modeStr = `  (${parts.join(", ")})`;
+      }
+    }
+
+    lines.push(`${rootDisplay.padEnd(padWidth)}${typeStr}${modeStr}`);
+  }
+
+  return lines;
+}
+
+export function abbreviateHome(absPath: string): string {
+  const home = os.homedir();
+  if (absPath.startsWith(home + path.sep) || absPath === home) {
+    return "~" + absPath.slice(home.length);
+  }
+  const cwd = process.cwd();
+  const relative = path.relative(cwd, absPath);
+  if (relative && !relative.startsWith("..")) {
+    return relative;
+  }
+  return absPath;
 }

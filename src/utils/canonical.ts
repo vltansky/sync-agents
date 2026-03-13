@@ -25,7 +25,7 @@ export function buildCanonicalDefinition(
   projectRoot: string,
 ): ClientDefinition {
   return {
-    name: "project",
+    name: "canonical",
     displayName: "Canonical",
     root: path.join(projectRoot, ".agents"),
     assets: [
@@ -100,7 +100,7 @@ export function synthesizeCanonicalAsset(
   const canonicalPath = asset.canonicalPath ?? asset.relativePath;
   return {
     ...asset,
-    client: "project",
+    client: "canonical",
     path: path.join(projectRoot, ".agents", canonicalPath),
     relativePath: canonicalPath,
     canonicalPath,
@@ -114,7 +114,7 @@ export function buildBootstrapEntry(
   const canonicalAsset = synthesizeCanonicalAsset(projectRoot, asset);
   return {
     asset,
-    targetClient: "project",
+    targetClient: "canonical",
     targetPath: canonicalAsset.path,
     targetRelativePath: canonicalAsset.relativePath,
     action: "create",

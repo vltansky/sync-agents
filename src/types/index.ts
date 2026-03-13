@@ -1,5 +1,5 @@
 export type AgentClientName =
-  | "project"
+  | "canonical"
   | "codex"
   | "claude"
   | "cursor"
@@ -76,6 +76,7 @@ export interface SyncOptions {
 
 export interface SyncCommandOptions {
   command: "sync";
+  root: string;
   types?: ManagedAssetType[];
   dryRun: boolean;
   verbose: boolean;
@@ -87,6 +88,7 @@ export interface SyncCommandOptions {
 
 export interface DoctorCommandOptions {
   command: "doctor";
+  root: string;
   types?: ManagedAssetType[];
   verbose: boolean;
 }
@@ -122,6 +124,12 @@ export interface AssetConflict {
   resolvedContent?: string;
   renamedPath?: string;
   selectedVersion?: AssetContent;
+}
+
+export interface AppliedEntry {
+  targetClient: string;
+  assetType: string;
+  writeMode: "symlink" | "copy";
 }
 
 export interface ScanResult {

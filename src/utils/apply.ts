@@ -2,7 +2,11 @@ import chalk from "chalk";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import type { SyncOptions, SyncPlanEntry } from "../types/index.js";
+import type {
+  SyncOptions,
+  SyncPlanEntry,
+  AppliedEntry,
+} from "../types/index.js";
 import {
   writeFileSafe,
   createBackup,
@@ -25,6 +29,7 @@ export interface ApplyResult {
   backups: string[];
   errors: string[];
   rolledBack: boolean;
+  entries: AppliedEntry[];
 }
 
 interface AppliedChange {
@@ -50,6 +55,7 @@ export async function applyPlan(
     backups: [],
     errors: [],
     rolledBack: false,
+    entries: [],
   };
 
   if (plan.length === 0) {
@@ -118,11 +124,18 @@ export async function applyPlan(
     }
 
     if (options.dryRun) {
-      console.log(
-        chalk.yellow(
-          `${actionLabel.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
-        ),
-      );
+      if (options.verbose) {
+        console.log(
+          chalk.yellow(
+            `${actionLabel.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
+          ),
+        );
+      }
+      result.entries.push({
+        targetClient: entry.targetClient,
+        assetType: entry.asset.type,
+        writeMode: symlinkEligible ? "symlink" : "copy",
+      });
       result.applied++;
       continue;
     }
@@ -144,11 +157,13 @@ export async function applyPlan(
       } else {
         await writeFileSafe(entry.targetPath, transformedContent);
       }
-      console.log(
-        chalk.green(
-          `${actionLabel.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
-        ),
-      );
+      if (options.verbose) {
+        console.log(
+          chalk.green(
+            `${actionLabel.padEnd(7)} ${entry.targetClient} :: ${displayPath}`,
+          ),
+        );
+      }
 
       // Post-sync verification
       const verified = symlinkEligible
@@ -164,6 +179,11 @@ export async function applyPlan(
       }
 
       appliedChanges.push({ targetPath: entry.targetPath, backupPath });
+      result.entries.push({
+        targetClient: entry.targetClient,
+        assetType: entry.asset.type,
+        writeMode: symlinkEligible ? "symlink" : "copy",
+      });
       result.applied++;
     } catch (err) {
       const error = `Failed to write ${entry.targetPath}: ${err}`;

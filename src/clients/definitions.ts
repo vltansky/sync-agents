@@ -38,7 +38,7 @@ export function buildClientDefinitions(
         { type: "agents", patterns: ["CLAUDE.md"] },
         { type: "commands", patterns: ["commands/**/*.md"] },
         { type: "rules", patterns: [] },
-        { type: "skills", patterns: [] },
+        { type: "skills", patterns: ["skills/**/SKILL.md"] },
         {
           type: "mcp",
           patterns: [],

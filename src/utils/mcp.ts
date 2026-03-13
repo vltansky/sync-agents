@@ -165,6 +165,7 @@ export interface McpConfig {
 export interface McpServerConfig {
   command?: string;
   args?: string[];
+  url?: string;
   env?: Record<string, string>;
   [key: string]: unknown;
 }
@@ -361,19 +362,20 @@ function parseJsonWithComments(content: string): McpConfig {
 function parseToml(content: string): McpConfig {
   const config: McpConfig = { mcpServers: {} };
   const lines = content.split("\n");
-  let currentSection: string | null = null;
   let currentServer: McpServerConfig | null = null;
 
   for (let line of lines) {
     line = line.trim();
     if (!line || line.startsWith("#")) continue;
 
-    // Section header [mcpServers.servername]
-    const sectionMatch = line.match(/^\[mcpServers\.(.+)\]$/);
+    // Section header: [mcp_servers.name] (Codex) or [mcpServers.name] (legacy)
+    const sectionMatch = line.match(
+      /^\[(?:mcp_servers|mcpServers)\.("?)(.+)\1\]$/,
+    );
     if (sectionMatch) {
-      currentSection = sectionMatch[1];
+      const serverName = sectionMatch[2];
       currentServer = {};
-      config.mcpServers![currentSection] = currentServer;
+      config.mcpServers![serverName] = currentServer;
       continue;
     }
 
@@ -423,14 +425,14 @@ function parseTomlValue(value: string): unknown {
 /**
  * Serialize to TOML
  */
-function serializeToml(config: McpConfig, indent: number): string {
+function serializeToml(config: McpConfig, _indent: number): string {
   let output = "";
 
   if (config.mcpServers) {
     for (const [serverName, serverConfig] of Object.entries(
       config.mcpServers,
     )) {
-      output += `[mcpServers.${serverName}]\n`;
+      output += `[mcp_servers.${serverName}]\n`;
       for (const [key, value] of Object.entries(serverConfig)) {
         output += `${key} = ${serializeTomlValue(value)}\n`;
       }
@@ -605,13 +607,16 @@ export function validateMcpConfig(
 
   // Validate each server
   for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
-    if (!serverConfig.command) {
-      errors.push(`Server "${serverName}" has no command`);
+    const hasCommand = !!serverConfig.command;
+    const hasUrl = !!(serverConfig as Record<string, unknown>).url;
+
+    if (!hasCommand && !hasUrl) {
+      errors.push(`Server "${serverName}" has no command or url`);
     }
 
     // Check for empty command
     if (
-      serverConfig.command &&
+      hasCommand &&
       typeof serverConfig.command === "string" &&
       serverConfig.command.trim() === ""
     ) {

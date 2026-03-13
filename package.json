@@ -1,6 +1,6 @@
 {
   "name": "link-agents",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Synchronize agent guidance (AGENTS, commands, rules, skills, MCP configs) across AI coding assistants.",
   "type": "module",
   "bin": {
@@ -31,9 +31,6 @@
     "commander": "12.1.0",
     "fast-glob": "3.3.2",
     "fs-extra": "11.2.0",
-    "inquirer-checkbox-plus-plus": "^1.1.1",
-    "ora": "8.0.1",
-    "picocolors": "1.0.0",
     "semver": "7.6.3",
     "zod": "3.23.8"
   },

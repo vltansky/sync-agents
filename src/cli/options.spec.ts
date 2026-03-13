@@ -1,5 +1,8 @@
+import os from "node:os";
 import { describe, expect, it } from "vitest";
 import { parseCliArgs } from "./options.js";
+
+const HOME = os.homedir();
 
 describe("parseCliArgs", () => {
   it("parses sync subcommand options", () => {
@@ -18,6 +21,7 @@ describe("parseCliArgs", () => {
 
     expect(result).toEqual({
       command: "sync",
+      root: HOME,
       dryRun: true,
       verbose: false,
       link: true,
@@ -33,6 +37,7 @@ describe("parseCliArgs", () => {
 
     expect(result).toEqual({
       command: "doctor",
+      root: HOME,
       verbose: true,
       types: undefined,
     });
@@ -62,6 +67,7 @@ describe("parseCliArgs", () => {
     const result = parseCliArgs(["node", "link-agents"]);
     expect(result).toEqual({
       command: "sync",
+      root: HOME,
       dryRun: false,
       verbose: false,
       link: false,

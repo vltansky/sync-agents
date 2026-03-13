@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import process from "node:process";
-import chalk from "chalk";
+import * as p from "@clack/prompts";
 import { CommanderError } from "commander";
 import { parseCliArgs } from "./cli/options.js";
 import { runSyncCommand } from "./commands/sync.js";
@@ -32,8 +32,6 @@ main().catch((error) => {
     return;
   }
 
-  console.error(
-    chalk.red(error instanceof Error ? error.message : String(error)),
-  );
+  p.cancel(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

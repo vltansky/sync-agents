@@ -114,10 +114,19 @@ describe("parseMcpConfig", () => {
     expect(result?.mcpServers?.figma?.url).toBe("https://mcp.figma.com/mcp");
   });
 
-  it("parses TOML config", () => {
-    const toml = `[mcpServers.filesystem]
+  it("parses TOML config with mcp_servers section", () => {
+    const toml = `[mcp_servers.filesystem]
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem"]`;
+
+    const result = parseMcpConfig(toml, "toml");
+    expect(result?.mcpServers?.filesystem).toBeDefined();
+    expect(result?.mcpServers?.filesystem?.command).toBe("npx");
+  });
+
+  it("parses TOML config with legacy mcpServers section", () => {
+    const toml = `[mcpServers.filesystem]
+command = "npx"`;
 
     const result = parseMcpConfig(toml, "toml");
     expect(result?.mcpServers?.filesystem).toBeDefined();
@@ -167,9 +176,9 @@ describe("serializeMcpConfig", () => {
     expect(parsed.mcpServers.filesystem.command).toBe("npx");
   });
 
-  it("serializes to TOML", () => {
+  it("serializes to TOML with mcp_servers section", () => {
     const result = serializeMcpConfig(config, "toml");
-    expect(result).toContain("[mcpServers.filesystem]");
+    expect(result).toContain("[mcp_servers.filesystem]");
     expect(result).toContain('command = "npx"');
   });
 
@@ -335,7 +344,7 @@ describe("mergeMcpAssets", () => {
       relativePath: "config.toml",
       canonicalPath: "config.toml",
       name: "config",
-      content: `[mcpServers.filesystem]
+      content: `[mcp_servers.filesystem]
 command = "npx"`,
       hash: "hash1",
     };
@@ -347,15 +356,15 @@ command = "npx"`,
       relativePath: "config.toml",
       canonicalPath: "config.toml",
       name: "config",
-      content: `[mcpServers.github]
+      content: `[mcp_servers.github]
 command = "gh"`,
       hash: "hash2",
     };
 
     const result = mergeMcpAssets([asset1, asset2]);
     expect(result).toBeTruthy();
-    expect(result).toContain("[mcpServers.filesystem]");
-    expect(result).toContain("[mcpServers.github]");
+    expect(result).toContain("[mcp_servers.filesystem]");
+    expect(result).toContain("[mcp_servers.github]");
   });
 });
 
@@ -502,7 +511,7 @@ describe("validateMcpConfig", () => {
     expect(result.errors).toContainEqual(expect.stringContaining("parse"));
   });
 
-  it("returns error for server without command", () => {
+  it("returns error for server without command or url", () => {
     const json = JSON.stringify({
       mcpServers: {
         broken: { args: ["test"] },
@@ -510,7 +519,20 @@ describe("validateMcpConfig", () => {
     });
     const result = validateMcpConfig(json, "json");
     expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.stringContaining("no command"));
+    expect(result.errors).toContainEqual(
+      expect.stringContaining("no command or url"),
+    );
+  });
+
+  it("validates URL-based servers as valid", () => {
+    const json = JSON.stringify({
+      mcpServers: {
+        remote: { url: "https://mcp.example.com/sse" },
+      },
+    });
+    const result = validateMcpConfig(json, "json");
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 
   it("returns warning for config without mcpServers", () => {

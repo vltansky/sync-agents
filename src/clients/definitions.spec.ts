@@ -67,11 +67,11 @@ describe("buildClientDefinitions", () => {
       expect(rules?.patterns).toEqual([]);
     });
 
-    it("should NOT have skills directory", () => {
+    it("should have skills in skills/ directory", () => {
       const defs = buildClientDefinitions(projectRoot);
       const claude = defs.find((d) => d.name === "claude");
       const skills = claude?.assets.find((a) => a.type === "skills");
-      expect(skills?.patterns).toEqual([]);
+      expect(skills?.patterns).toContain("skills/**/SKILL.md");
     });
   });
 

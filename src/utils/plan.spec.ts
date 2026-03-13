@@ -11,7 +11,7 @@ describe("buildSyncPlan", () => {
   it("should create a merge plan with priority order", () => {
     const assets: AssetContent[] = [
       {
-        client: "project",
+        client: "canonical",
         type: "agents",
         path: "/project/AGENTS.md",
         relativePath: "AGENTS.md",
@@ -34,7 +34,7 @@ describe("buildSyncPlan", () => {
 
     const defs: ClientDefinition[] = [
       {
-        name: "project",
+        name: "canonical",
         displayName: "Project",
         root: "/project",
         assets: [{ type: "agents", patterns: ["AGENTS.md"] }],
@@ -49,7 +49,7 @@ describe("buildSyncPlan", () => {
 
     const options = {
       mode: "merge" as const,
-      priority: ["project", "claude"] as AgentClientName[],
+      priority: ["canonical", "claude"] as AgentClientName[],
     };
 
     const { plan, desiredAssets } = buildSyncPlan(assets, defs, options);
@@ -73,7 +73,7 @@ describe("buildSyncPlan", () => {
     };
 
     const targetAsset: AssetContent = {
-      client: "project",
+      client: "canonical",
       type: "agents",
       path: "/project/AGENTS.md",
       relativePath: "AGENTS.md",
@@ -91,7 +91,7 @@ describe("buildSyncPlan", () => {
         assets: [{ type: "agents", patterns: ["AGENTS.md"] }],
       },
       {
-        name: "project",
+        name: "canonical",
         displayName: "Project",
         root: "/project",
         assets: [{ type: "agents", patterns: ["AGENTS.md"] }],
@@ -100,8 +100,8 @@ describe("buildSyncPlan", () => {
 
     const options = {
       mode: "merge" as const,
-      clients: ["project"] as AgentClientName[],
-      priority: ["claude", "project"] as AgentClientName[],
+      clients: ["canonical"] as AgentClientName[],
+      priority: ["claude", "canonical"] as AgentClientName[],
     };
 
     const { plan } = buildSyncPlan([sourceAsset, targetAsset], defs, options);
@@ -124,7 +124,7 @@ describe("buildSyncPlan", () => {
     };
 
     const existingAsset: AssetContent = {
-      client: "project",
+      client: "canonical",
       type: "agents",
       path: "/project/AGENTS.md",
       relativePath: "AGENTS.md",
@@ -136,7 +136,7 @@ describe("buildSyncPlan", () => {
 
     const defs: ClientDefinition[] = [
       {
-        name: "project",
+        name: "canonical",
         displayName: "Project",
         root: "/project",
         assets: [{ type: "agents", patterns: ["AGENTS.md"] }],
@@ -151,12 +151,12 @@ describe("buildSyncPlan", () => {
 
     const options = {
       mode: "merge" as const,
-      priority: ["claude", "project"] as AgentClientName[],
+      priority: ["claude", "canonical"] as AgentClientName[],
     };
 
     const { plan } = buildSyncPlan([sourceAsset, existingAsset], defs, options);
 
-    const updateForProject = plan.find((e) => e.targetClient === "project");
+    const updateForProject = plan.find((e) => e.targetClient === "canonical");
     expect(updateForProject?.action).toBe("update");
     expect(updateForProject?.asset.hash).toBe("newHash");
   });
@@ -164,7 +164,7 @@ describe("buildSyncPlan", () => {
   it("should filter by asset types when specified", () => {
     const assets: AssetContent[] = [
       {
-        client: "project",
+        client: "canonical",
         type: "agents",
         path: "/project/AGENTS.md",
         relativePath: "AGENTS.md",
@@ -174,7 +174,7 @@ describe("buildSyncPlan", () => {
         hash: "hash1",
       },
       {
-        client: "project",
+        client: "canonical",
         type: "commands",
         path: "/project/commands/test.md",
         relativePath: "commands/test.md",
@@ -222,7 +222,7 @@ describe("buildSyncPlan", () => {
         hash: "hash1",
       },
       {
-        client: "project",
+        client: "canonical",
         type: "agents",
         path: "/project/AGENTS.md",
         relativePath: "AGENTS.md",
@@ -258,7 +258,7 @@ describe("buildSyncPlan", () => {
   it("should skip syncing AGENTS.md to Claude when separateClaudeMd is enabled", () => {
     const assets: AssetContent[] = [
       {
-        client: "project",
+        client: "canonical",
         type: "agents",
         path: "/project/AGENTS.md",
         relativePath: "AGENTS.md",
@@ -271,7 +271,7 @@ describe("buildSyncPlan", () => {
 
     const defs: ClientDefinition[] = [
       {
-        name: "project",
+        name: "canonical",
         displayName: "Project",
         root: "/project",
         assets: [{ type: "agents", patterns: ["AGENTS.md"] }],
