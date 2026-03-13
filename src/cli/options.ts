@@ -35,7 +35,6 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
     .description(
       "Bootstrap canonical .agents assets if needed and sync them to clients",
     )
-    .option("-c, --clients <list>", "comma-separated list of clients to target")
     .option("-t, --types <list>", "comma-separated list of asset types to sync")
     .option("--dry-run", "preview without writing changes")
     .option("-v, --verbose", "verbose output")
@@ -67,9 +66,6 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
 
       parsed = {
         command: "sync",
-        clients: opts.clients
-          ? parseList(opts.clients, CLIENT_CHOICES)
-          : undefined,
         types: opts.types ? parseList(opts.types, TYPE_CHOICES) : undefined,
         dryRun: Boolean(opts.dryRun),
         verbose: Boolean(opts.verbose),
@@ -86,10 +82,6 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
       "Inspect canonical sync health, drift, and ignored legacy inputs",
     )
     .option(
-      "-c, --clients <list>",
-      "comma-separated list of clients to inspect",
-    )
-    .option(
       "-t, --types <list>",
       "comma-separated list of asset types to inspect",
     )
@@ -97,9 +89,6 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
     .action((opts) => {
       parsed = {
         command: "doctor",
-        clients: opts.clients
-          ? parseList(opts.clients, CLIENT_CHOICES)
-          : undefined,
         types: opts.types ? parseList(opts.types, TYPE_CHOICES) : undefined,
         verbose: Boolean(opts.verbose),
       };

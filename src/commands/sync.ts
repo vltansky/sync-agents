@@ -39,7 +39,7 @@ export async function runSyncCommand(
 ): Promise<void> {
   const projectRoot = process.cwd();
   const allDefs = buildClientDefinitions(projectRoot);
-  const targetDefs = await getTargetDefinitions(allDefs, options.clients);
+  const targetDefs = await getTargetDefinitions(allDefs);
   const canonicalAssets = await discoverCanonicalAssets(
     projectRoot,
     options.types,
@@ -291,24 +291,10 @@ async function collectGeneratedStateEntries(
 
 async function getTargetDefinitions(
   defs: ReturnType<typeof buildClientDefinitions>,
-  selectedClients?: SyncCommandOptions["clients"],
 ) {
   const targets = [];
 
   for (const def of defs) {
-    if (selectedClients && !selectedClients.includes(def.name)) {
-      continue;
-    }
-
-    if (def.name === "project") {
-      continue;
-    }
-
-    if (selectedClients?.includes(def.name)) {
-      targets.push(def);
-      continue;
-    }
-
     if (await fileExists(def.root)) {
       targets.push(def);
     }

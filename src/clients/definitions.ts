@@ -13,21 +13,6 @@ export function buildClientDefinitions(
 ): ClientDefinition[] {
   const defs: ClientDefinition[] = [
     {
-      name: "project",
-      displayName: "Project",
-      root: projectRoot,
-      assets: [
-        { type: "agents", patterns: ["AGENTS.md", "CLAUDE.md"] },
-        { type: "commands", patterns: ["commands/**/*.md"] },
-        {
-          type: "rules",
-          patterns: ["rules/**/*.md", "rules/**/*.mdc", "rules/**/*.rules"],
-        },
-        { type: "skills", patterns: ["skills/**"] },
-        { type: "mcp", patterns: [], files: [".cursor/mcp.json", ".mcp.json"] },
-      ],
-    },
-    {
       name: "codex",
       displayName: "Codex",
       root: path.join(HOME, ".codex"),
@@ -87,7 +72,6 @@ export function buildClientDefinitions(
 }
 
 export const CLIENT_ORDER: AgentClientName[] = [
-  "project",
   "codex",
   "claude",
   "cursor",

@@ -74,7 +74,6 @@ export interface SyncOptions {
 
 export interface SyncCommandOptions {
   command: "sync";
-  clients?: AgentClientName[];
   types?: ManagedAssetType[];
   dryRun: boolean;
   verbose: boolean;
@@ -86,7 +85,6 @@ export interface SyncCommandOptions {
 
 export interface DoctorCommandOptions {
   command: "doctor";
-  clients?: AgentClientName[];
   types?: ManagedAssetType[];
   verbose: boolean;
 }

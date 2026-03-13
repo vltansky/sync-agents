@@ -40,9 +40,7 @@ export function buildCanonicalDefinition(
 export function buildLegacyDefinitions(
   projectRoot: string,
 ): ClientDefinition[] {
-  return buildClientDefinitions(projectRoot).filter(
-    (def) => def.name !== "project",
-  );
+  return buildClientDefinitions(projectRoot);
 }
 
 export async function discoverCanonicalAssets(
@@ -129,13 +127,10 @@ export function buildFanoutPlan(
   defs: ClientDefinition[],
   options: SyncCommandOptions,
 ): SyncPlanEntry[] {
-  const targets = defs.filter(
-    (def) => !options.clients || options.clients.includes(def.name),
-  );
   const plan: SyncPlanEntry[] = [];
 
   for (const asset of canonicalAssets) {
-    for (const def of targets) {
+    for (const def of defs) {
       if (shouldSkipTargetAsset(options, def.name, asset)) {
         continue;
       }

@@ -10,32 +10,7 @@ describe("buildClientDefinitions", () => {
 
   describe("client order", () => {
     it("should include only supported clients", () => {
-      expect(CLIENT_ORDER).toEqual([
-        "project",
-        "codex",
-        "claude",
-        "cursor",
-        "opencode",
-      ]);
-    });
-  });
-
-  describe("project client", () => {
-    it("should have correct root path", () => {
-      const defs = buildClientDefinitions(projectRoot);
-      const project = defs.find((d) => d.name === "project");
-      expect(project?.root).toBe(projectRoot);
-    });
-
-    it("should support all asset types", () => {
-      const defs = buildClientDefinitions(projectRoot);
-      const project = defs.find((d) => d.name === "project");
-      const types = project?.assets.map((a) => a.type);
-      expect(types).toContain("agents");
-      expect(types).toContain("commands");
-      expect(types).toContain("rules");
-      expect(types).toContain("skills");
-      expect(types).toContain("mcp");
+      expect(CLIENT_ORDER).toEqual(["codex", "claude", "cursor", "opencode"]);
     });
   });
 

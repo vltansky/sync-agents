@@ -120,6 +120,10 @@ describe("getBootstrapResolution", () => {
 describe("buildLegacyDefinitions", () => {
   it("excludes the project client from legacy bootstrap sources", () => {
     const defs = buildLegacyDefinitions("/repo");
-    expect(defs.some((def) => def.name === "project")).toBe(false);
+    expect(
+      defs.every((def) =>
+        ["codex", "claude", "cursor", "opencode"].includes(def.name),
+      ),
+    ).toBe(true);
   });
 });

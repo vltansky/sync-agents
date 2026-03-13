@@ -12,8 +12,6 @@ describe("parseCliArgs", () => {
       "--separate-claude-md",
       "--bootstrap-source",
       "claude",
-      "--clients",
-      "claude,cursor",
       "--types",
       "agents,mcp",
     ]);
@@ -26,7 +24,6 @@ describe("parseCliArgs", () => {
       copy: false,
       separateClaudeMd: true,
       bootstrapSource: "claude",
-      clients: ["claude", "cursor"],
       types: ["agents", "mcp"],
     });
   });
@@ -37,7 +34,6 @@ describe("parseCliArgs", () => {
     expect(result).toEqual({
       command: "doctor",
       verbose: true,
-      clients: undefined,
       types: undefined,
     });
   });
@@ -72,7 +68,6 @@ describe("parseCliArgs", () => {
       copy: false,
       separateClaudeMd: false,
       bootstrapSource: undefined,
-      clients: undefined,
       types: undefined,
     });
   });
@@ -87,11 +82,5 @@ describe("parseCliArgs", () => {
     expect(() => parseCliArgs(["node", "agsync", "restore"])).toThrow(
       /restore requires one of --latest, --list, or --id/i,
     );
-  });
-
-  it("rejects project as a public client target", () => {
-    expect(() =>
-      parseCliArgs(["node", "agsync", "sync", "--clients", "project"]),
-    ).toThrow(/Invalid value: project/i);
   });
 });
