@@ -98,6 +98,41 @@ describe("getBootstrapResolution", () => {
       candidates: [claude, cursor],
     });
   });
+
+  it("auto-selects when candidates differ only in client-specific frontmatter", () => {
+    const base = "---\ndescription: interview with octocode\n---\nBody content";
+    const withCursorKeys =
+      "---\ndescription: interview with octocode\nargument-hint: topic\nmodel: claude-sonnet\n---\nBody content";
+    const withClaudeKeys =
+      "---\ndescription: interview with octocode\nallowed_tools: Read, Grep\n---\nBody content";
+
+    const cursor = makeAsset(
+      "cursor",
+      "commands",
+      "commands/interview.md",
+      withCursorKeys,
+    );
+    cursor.modifiedAt = new Date("2026-03-10");
+    const claude = makeAsset(
+      "claude",
+      "commands",
+      "commands/interview.md",
+      withClaudeKeys,
+    );
+    claude.modifiedAt = new Date("2026-03-08");
+    const codex = makeAsset("codex", "commands", "commands/interview.md", base);
+    codex.modifiedAt = new Date("2026-03-05");
+
+    const result = getBootstrapResolution({
+      canonicalPath: "commands/interview.md",
+      candidates: [cursor, claude, codex],
+    });
+
+    expect(result.status).toBe("selected");
+    if (result.status === "selected") {
+      expect(result.asset.client).toBe("cursor"); // newest
+    }
+  });
   it("surfaces ambiguity when bootstrap-source still matches multiple files", () => {
     const projectCursor = makeAsset("canonical", "mcp", "mcp.json", "cursor");
     projectCursor.path = "/project/.cursor/mcp.json";

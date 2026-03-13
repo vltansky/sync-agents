@@ -84,7 +84,7 @@ export async function runSyncCommand(
         resolution.candidates,
       );
       if (!selected) {
-        p.cancel("Bootstrap cancelled.");
+        p.cancel("Cancelled.");
         process.exit(1);
       }
       bootstrapEntries.push(buildBootstrapEntry(projectRoot, selected));
@@ -123,7 +123,7 @@ export async function runSyncCommand(
     `Targets:     ${targets}`,
     `Types:       ${types}`,
     `Canonical:   ${canonicalAssets.length} assets`,
-    `Bootstrap:   ${bootstrapEntries.length} new`,
+    `Imported:    ${bootstrapEntries.length} new`,
   ];
   p.note(configLines.join("\n"), "Configuration");
 
@@ -240,7 +240,7 @@ async function chooseBootstrapCandidate(
 ): Promise<AssetContent | null> {
   if (!process.stdout.isTTY || !process.stdin.isTTY) {
     throw new Error(
-      `Ambiguous bootstrap for ${canonicalPath}. Re-run interactively or pass --bootstrap-source <client>.`,
+      `Multiple versions found for ${canonicalPath}. Re-run interactively or pass --bootstrap-source <client>.`,
     );
   }
 
@@ -251,10 +251,10 @@ async function chooseBootstrapCandidate(
   });
 
   const choice = await p.select({
-    message: `Select bootstrap source for ${canonicalPath}`,
+    message: `Multiple versions of ${canonicalPath} found — pick one to use as source`,
     options: [
       ...getBootstrapChoices(sorted),
-      { value: "__cancel__", label: "Cancel", hint: "Abort bootstrap" },
+      { value: "__cancel__", label: "Cancel" },
     ],
   });
 

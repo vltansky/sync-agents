@@ -34,7 +34,7 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
   program
     .command("sync", { isDefault: true })
     .description(
-      "Bootstrap canonical .agents assets if needed and sync them to clients",
+      "Import existing client assets into canonical .agents and sync to all clients",
     )
     .option("-t, --types <list>", "comma-separated list of asset types to sync")
     .option("--dry-run", "preview without writing changes")
@@ -54,7 +54,7 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
     )
     .option(
       "--bootstrap-source <client>",
-      "explicit source client when canonical bootstrap is ambiguous",
+      "explicit source client when multiple versions exist during import",
     )
     .action((opts) => {
       if (opts.link && opts.copy) {

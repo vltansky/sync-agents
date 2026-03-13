@@ -34,7 +34,7 @@ export function buildSyncPreflightLines(input: SyncPreflightInput): string[] {
     `Mode: ${input.dryRun ? "dry-run" : "apply"}`,
     `Write mode: ${input.writeMode}`,
     `Canonical assets: ${input.canonicalCount}`,
-    `Bootstrap actions: ${input.bootstrapCount}`,
+    `Imported from clients: ${input.bootstrapCount}`,
     `Ignored legacy inputs: ${input.ignoredCount}`,
     `Targets: ${targets}`,
     `Managed types: ${types}`,
@@ -42,16 +42,16 @@ export function buildSyncPreflightLines(input: SyncPreflightInput): string[] {
 }
 
 export function buildSyncPlanSummaryLines(plan: SyncPlanEntry[]): string[] {
-  const bootstrapEntries = plan.filter((entry) => entry.reason === "bootstrap");
-  const fanoutEntries = plan.filter((entry) => entry.reason !== "bootstrap");
+  const importEntries = plan.filter((entry) => entry.reason === "import");
+  const syncEntries = plan.filter((entry) => entry.reason !== "import");
   const lines: string[] = [];
 
-  if (bootstrapEntries.length > 0) {
-    lines.push(`bootstrap   ${formatEntrySummary(bootstrapEntries)}`);
+  if (importEntries.length > 0) {
+    lines.push(`import      ${formatEntrySummary(importEntries)}`);
   }
 
   const byClient = new Map<string, SyncPlanEntry[]>();
-  for (const entry of fanoutEntries) {
+  for (const entry of syncEntries) {
     const entries = byClient.get(entry.targetClient) ?? [];
     entries.push(entry);
     byClient.set(entry.targetClient, entries);
@@ -60,7 +60,7 @@ export function buildSyncPlanSummaryLines(plan: SyncPlanEntry[]): string[] {
   for (const [client, entries] of [...byClient.entries()].sort((a, b) =>
     a[0].localeCompare(b[0]),
   )) {
-    lines.push(`fanout      ${client}: ${formatEntrySummary(entries)}`);
+    lines.push(`sync        ${client}: ${formatEntrySummary(entries)}`);
   }
 
   return lines;
@@ -68,7 +68,7 @@ export function buildSyncPlanSummaryLines(plan: SyncPlanEntry[]): string[] {
 
 export function buildDetailedPlanLines(plan: SyncPlanEntry[]): string[] {
   return plan.map((entry) => {
-    const phase = entry.reason === "bootstrap" ? "bootstrap" : "fanout";
+    const phase = entry.reason === "import" ? "import" : "sync";
     return `${phase.padEnd(10)} ${entry.targetPath}`;
   });
 }

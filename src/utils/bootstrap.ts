@@ -1,4 +1,6 @@
 import type { AgentClientName, AssetContent } from "../types/index.js";
+import { normalizeForComparison } from "./frontmatter.js";
+import { hashContent } from "./fs.js";
 
 interface BootstrapResolutionInput {
   canonicalPath: string;
@@ -39,8 +41,13 @@ export function getBootstrapResolution(
     return { status: "selected", asset: candidates[0] };
   }
 
-  // All candidates have the same content — pick the newest, no need to ask
-  const allIdentical = candidates.every((c) => c.hash === candidates[0].hash);
+  // Compare normalized content — strips client-specific frontmatter keys
+  // so files that only differ in e.g. argument-hint or allowed_tools are
+  // treated as identical.
+  const normalizedHashes = candidates.map((c) =>
+    hashContent(normalizeForComparison(c.content)),
+  );
+  const allIdentical = normalizedHashes.every((h) => h === normalizedHashes[0]);
   if (allIdentical) {
     const newest = [...candidates].sort((a, b) => {
       const ta = a.modifiedAt?.getTime() ?? 0;

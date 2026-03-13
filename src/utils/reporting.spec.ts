@@ -55,7 +55,7 @@ describe("reporting", () => {
       "Mode: dry-run",
       "Write mode: copy",
       "Canonical assets: 4",
-      "Bootstrap actions: 1",
+      "Imported from clients: 1",
       "Ignored legacy inputs: 2",
       "Targets: claude, cursor",
       "Managed types: agents, commands",
@@ -64,43 +64,38 @@ describe("reporting", () => {
 
   it("groups sync plan lines by phase and client", () => {
     const lines = buildSyncPlanSummaryLines([
-      makeEntry("agents", "canonical", "/repo/.agents/AGENTS.md", "bootstrap"),
+      makeEntry("agents", "canonical", "/repo/.agents/AGENTS.md", "import"),
       makeEntry(
         "commands",
         "codex",
         "/home/.codex/skills/commands/review/SKILL.md",
-        "fanout",
+        "sync",
       ),
-      makeEntry("mcp", "cursor", "/home/.cursor/mcp.json", "fanout"),
-      makeEntry("agents", "cursor", "/home/.cursor/AGENTS.md", "fanout"),
+      makeEntry("mcp", "cursor", "/home/.cursor/mcp.json", "sync"),
+      makeEntry("agents", "cursor", "/home/.cursor/AGENTS.md", "sync"),
     ]);
 
     expect(lines).toEqual([
-      "bootstrap   1 change (agents 1)",
-      "fanout      codex: 1 change (commands 1)",
-      "fanout      cursor: 2 changes (agents 1, mcp 1)",
+      "import      1 change (agents 1)",
+      "sync        codex: 1 change (commands 1)",
+      "sync        cursor: 2 changes (agents 1, mcp 1)",
     ]);
   });
 
   it("formats detailed plan lines", () => {
     expect(
       buildDetailedPlanLines([
-        makeEntry(
-          "agents",
-          "canonical",
-          "/repo/.agents/AGENTS.md",
-          "bootstrap",
-        ),
+        makeEntry("agents", "canonical", "/repo/.agents/AGENTS.md", "import"),
         makeEntry(
           "commands",
           "claude",
           "/home/.claude/commands/review.md",
-          "fanout",
+          "sync",
         ),
       ]),
     ).toEqual([
-      "bootstrap  /repo/.agents/AGENTS.md",
-      "fanout     /home/.claude/commands/review.md",
+      "import     /repo/.agents/AGENTS.md",
+      "sync       /home/.claude/commands/review.md",
     ]);
   });
 

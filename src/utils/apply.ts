@@ -80,11 +80,17 @@ export async function applyPlan(
       continue;
     }
 
-    // Transform content for target client (e.g., OpenCode frontmatter format)
+    // For MCP assets, read existing target file so the transform can merge
+    // into shared config files (e.g. Codex config.toml, Claude .claude.json)
+    // rather than overwriting them.
+    const existingTargetContent =
+      entry.asset.type === "mcp" ? await readFileSafe(entry.targetPath) : null;
+
     const transformedContent = transformContentForClient(
       entry.asset.content,
       entry.targetClient,
       entry.asset.type,
+      existingTargetContent,
     );
     const symlinkEligible =
       Boolean(options.link) &&

@@ -248,6 +248,7 @@ export function transformForOpenCode(content: string): string {
  */
 const CURSOR_ONLY_KEYS = ["argument-hint", "model"];
 const CLAUDE_ONLY_KEYS = ["allowed_tools"];
+const ALL_CLIENT_SPECIFIC_KEYS = [...CURSOR_ONLY_KEYS, ...CLAUDE_ONLY_KEYS];
 
 /** Clients that DON'T understand Cursor command frontmatter */
 const STRIP_CURSOR_KEYS_FOR: Set<AgentClientName> = new Set([
@@ -302,9 +303,13 @@ function stripClientSpecificFrontmatter(
 
 /**
  * Transform MCP config from canonical (mcpServers) to OpenCode format (mcp).
+ * Merges into existing opencode.json if present, preserving other keys.
  * OpenCode expects: { mcp: { name: { type, command: [...], enabled, environment? } } }
  */
-function transformMcpForOpenCode(content: string): string {
+function transformMcpForOpenCode(
+  content: string,
+  existingContent?: string | null,
+): string {
   const parsed = parseMcpConfig(content, "json");
   if (!parsed?.mcpServers) return content;
 
@@ -327,38 +332,136 @@ function transformMcpForOpenCode(content: string): string {
     }
   }
 
-  return JSON.stringify({ mcp }, null, 2);
+  // Merge into existing file to preserve non-MCP settings
+  let existing: Record<string, unknown> = {};
+  if (existingContent) {
+    try {
+      existing = JSON.parse(existingContent);
+    } catch {
+      // can't parse existing — start fresh
+    }
+  }
+
+  return JSON.stringify({ ...existing, mcp }, null, 2);
 }
 
 /**
- * Transform MCP config from canonical JSON (mcpServers) to Codex TOML (mcp_servers).
+ * Transform MCP config from canonical JSON to Codex TOML (mcp_servers sections).
+ * Merges into existing config.toml if present, preserving all other settings.
  */
-function transformMcpForCodex(content: string): string {
+function transformMcpForCodex(
+  content: string,
+  existingContent?: string | null,
+): string {
   const parsed = parseMcpConfig(content, "json");
   if (!parsed?.mcpServers) return content;
 
-  return serializeMcpConfig(parsed, "toml");
+  // Build the new mcp_servers TOML sections
+  const mcpToml = serializeMcpConfig(parsed, "toml");
+
+  if (!existingContent) {
+    return mcpToml;
+  }
+
+  // Remove existing [mcp_servers.*] and [mcpServers.*] sections from the file,
+  // then append the new ones.
+  const lines = existingContent.split("\n");
+  const outputLines: string[] = [];
+  let inMcpSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Detect start of an MCP server section
+    if (/^\[(?:mcp_servers|mcpServers)\./.test(trimmed)) {
+      inMcpSection = true;
+      continue;
+    }
+    // Any new section header ends the MCP section
+    if (inMcpSection && /^\[/.test(trimmed)) {
+      inMcpSection = false;
+    }
+    if (!inMcpSection) {
+      outputLines.push(line);
+    }
+  }
+
+  // Remove trailing blank lines before appending
+  while (
+    outputLines.length > 0 &&
+    outputLines[outputLines.length - 1].trim() === ""
+  ) {
+    outputLines.pop();
+  }
+
+  // Append new MCP sections
+  if (mcpToml.trim()) {
+    outputLines.push("", mcpToml);
+  }
+
+  return outputLines.join("\n");
+}
+
+/**
+ * Transform MCP config from canonical JSON to Claude's .claude.json format.
+ * Merges mcpServers into the existing file, preserving all other settings.
+ */
+function transformMcpForClaude(
+  content: string,
+  existingContent?: string | null,
+): string {
+  const parsed = parseMcpConfig(content, "json");
+  if (!parsed?.mcpServers) return content;
+
+  let existing: Record<string, unknown> = {};
+  if (existingContent) {
+    try {
+      existing = JSON.parse(existingContent);
+    } catch {
+      // can't parse existing — start fresh
+    }
+  }
+
+  return JSON.stringify(
+    { ...existing, mcpServers: parsed.mcpServers },
+    null,
+    2,
+  );
+}
+
+/**
+ * Normalize content for cross-client comparison by stripping all
+ * client-specific frontmatter keys. Two files that differ only in
+ * client-specific keys will produce identical normalized output.
+ */
+export function normalizeForComparison(content: string): string {
+  return stripClientSpecificFrontmatter(content, ALL_CLIENT_SPECIFIC_KEYS);
 }
 
 /**
  * Transform content based on target client requirements.
+ * For MCP assets, existingTargetContent allows merging into shared config files
+ * (e.g. Codex config.toml, Claude .claude.json) without clobbering other settings.
  */
 export function transformContentForClient(
   content: string,
   targetClient: AgentClientName,
   assetType: AssetType,
+  existingTargetContent?: string | null,
 ): string {
   // Transform agents for OpenCode
   if (targetClient === "opencode" && assetType === "agents") {
     return transformForOpenCode(content);
   }
 
-  // Transform MCP for client-specific formats
+  // Transform MCP for client-specific formats (merge into existing config)
   if (targetClient === "opencode" && assetType === "mcp") {
-    return transformMcpForOpenCode(content);
+    return transformMcpForOpenCode(content, existingTargetContent);
   }
   if (targetClient === "codex" && assetType === "mcp") {
-    return transformMcpForCodex(content);
+    return transformMcpForCodex(content, existingTargetContent);
+  }
+  if (targetClient === "claude" && assetType === "mcp") {
+    return transformMcpForClaude(content, existingTargetContent);
   }
 
   if (assetType === "commands") {

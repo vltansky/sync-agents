@@ -118,7 +118,7 @@ export function buildBootstrapEntry(
     targetPath: canonicalAsset.path,
     targetRelativePath: canonicalAsset.relativePath,
     action: "create",
-    reason: "bootstrap",
+    reason: "import",
   };
 }
 
@@ -155,7 +155,7 @@ export function buildFanoutPlan(
           targetPath,
           targetRelativePath: targetRelative,
           action: "create",
-          reason: "fanout",
+          reason: "sync",
         });
       }
 
@@ -189,7 +189,7 @@ function buildCodexCommandMetadataEntry(
     targetPath: buildTargetAbsolutePath(root, metadataRelative),
     targetRelativePath: metadataRelative,
     action: "create",
-    reason: "fanout",
+    reason: "sync",
   };
 }
 
@@ -203,6 +203,21 @@ export function getBootstrapChoices(
   return candidates.map((asset, i) => ({
     value: asset.path,
     label: `${asset.client}: ${asset.relativePath}`,
-    hint: `${asset.path}${i === 0 ? " (newest)" : ""}`,
+    hint: `${formatRelativeTime(asset.modifiedAt)}${i === 0 ? " - newest" : ""}`,
   }));
+}
+
+function formatRelativeTime(date: Date | undefined): string {
+  if (!date) return "";
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  return `${diffMonths}mo ago`;
 }
