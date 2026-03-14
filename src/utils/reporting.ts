@@ -126,7 +126,7 @@ function formatEntrySummary(entries: SyncPlanEntry[]): string {
       return null;
     }
     if (type === "agents") return TYPE_LABELS[type];
-    return `${TYPE_LABELS[type]} ${count}`;
+    return `${count} ${TYPE_LABELS[type]}`;
   }).filter((item): item is string => item !== null);
 
   return `${entries.length} change${entries.length === 1 ? "" : "s"} (${details.join(", ")})`;
@@ -182,7 +182,7 @@ export function buildSyncTreeLines(
     const typeStr = TYPE_ORDER.filter((t) => (typeCounts.get(t) ?? 0) > 0)
       .map((t) => {
         if (t === "agents") return TYPE_LABELS[t];
-        return `${TYPE_LABELS[t]} ${typeCounts.get(t)}`;
+        return `${typeCounts.get(t)} ${TYPE_LABELS[t]}`;
       })
       .join(", ");
 

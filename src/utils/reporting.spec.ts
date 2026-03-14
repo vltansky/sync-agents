@@ -86,8 +86,8 @@ describe("reporting", () => {
 
     expect(lines).toEqual([
       "import      1 change (AGENTS.md)",
-      "sync        codex: 1 change (commands 1)",
-      "sync        cursor: 2 changes (AGENTS.md, mcp 2)",
+      "sync        codex: 1 change (1 commands)",
+      "sync        cursor: 2 changes (AGENTS.md, 2 mcp)",
     ]);
   });
 
