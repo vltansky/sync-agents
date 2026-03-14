@@ -8,7 +8,7 @@ import type {
 
 const TYPE_ORDER: ManagedAssetType[] = ["agents", "commands", "skills", "mcp"];
 const TYPE_LABELS: Record<ManagedAssetType, string> = {
-  agents: "agents",
+  agents: "AGENTS.md",
   commands: "commands",
   skills: "skills",
   mcp: "mcp",
@@ -94,6 +94,15 @@ export function formatSnapshotList(
   );
 }
 
+function countMcpServers(content: string): number {
+  try {
+    const parsed = JSON.parse(content);
+    return Object.keys(parsed.mcpServers ?? parsed.mcp ?? {}).length;
+  } catch {
+    return 1;
+  }
+}
+
 function formatEntrySummary(entries: SyncPlanEntry[]): string {
   const counts = new Map<ManagedAssetType, number>();
 
@@ -102,7 +111,11 @@ function formatEntrySummary(entries: SyncPlanEntry[]): string {
   }
 
   for (const entry of entries) {
-    if (isManagedAssetType(entry.asset.type)) {
+    if (!isManagedAssetType(entry.asset.type)) continue;
+
+    if (entry.asset.type === "mcp") {
+      counts.set("mcp", countMcpServers(entry.asset.content));
+    } else {
       counts.set(entry.asset.type, (counts.get(entry.asset.type) ?? 0) + 1);
     }
   }
@@ -112,6 +125,7 @@ function formatEntrySummary(entries: SyncPlanEntry[]): string {
     if (count === 0) {
       return null;
     }
+    if (type === "agents") return TYPE_LABELS[type];
     return `${TYPE_LABELS[type]} ${count}`;
   }).filter((item): item is string => item !== null);
 
@@ -153,7 +167,11 @@ export function buildSyncTreeLines(
 
     const typeCounts = new Map<ManagedAssetType, number>();
     for (const entry of clientEntries) {
-      if (isManagedAssetType(entry.assetType)) {
+      if (!isManagedAssetType(entry.assetType)) continue;
+
+      if (entry.assetType === "mcp" && entry.mcpServerCount) {
+        typeCounts.set("mcp", entry.mcpServerCount);
+      } else {
         typeCounts.set(
           entry.assetType,
           (typeCounts.get(entry.assetType) ?? 0) + 1,
@@ -162,7 +180,10 @@ export function buildSyncTreeLines(
     }
 
     const typeStr = TYPE_ORDER.filter((t) => (typeCounts.get(t) ?? 0) > 0)
-      .map((t) => `${TYPE_LABELS[t]} ${typeCounts.get(t)}`)
+      .map((t) => {
+        if (t === "agents") return TYPE_LABELS[t];
+        return `${TYPE_LABELS[t]} ${typeCounts.get(t)}`;
+      })
       .join(", ");
 
     let modeStr = "";

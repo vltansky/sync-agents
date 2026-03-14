@@ -130,6 +130,7 @@ export interface AppliedEntry {
   targetClient: string;
   assetType: string;
   writeMode: "symlink" | "copy";
+  mcpServerCount?: number;
 }
 
 export interface ScanResult {

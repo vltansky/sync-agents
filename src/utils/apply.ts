@@ -20,6 +20,15 @@ import { transformContentForClient } from "./frontmatter.js";
 import { updateManifest, pruneStaleFiles } from "./manifest.js";
 
 const BACKUP_DIR = path.join(os.homedir(), ".link-agents", "backups");
+
+function countMcpServersInContent(content: string): number {
+  try {
+    const parsed = JSON.parse(content);
+    return Object.keys(parsed.mcpServers ?? {}).length;
+  } catch {
+    return 0;
+  }
+}
 const MAX_BACKUPS = 10;
 
 export interface ApplyResult {
@@ -141,6 +150,9 @@ export async function applyPlan(
         targetClient: entry.targetClient,
         assetType: entry.asset.type,
         writeMode: symlinkEligible ? "symlink" : "copy",
+        ...(entry.asset.type === "mcp"
+          ? { mcpServerCount: countMcpServersInContent(entry.asset.content) }
+          : {}),
       });
       result.applied++;
       continue;
@@ -189,6 +201,9 @@ export async function applyPlan(
         targetClient: entry.targetClient,
         assetType: entry.asset.type,
         writeMode: symlinkEligible ? "symlink" : "copy",
+        ...(entry.asset.type === "mcp"
+          ? { mcpServerCount: countMcpServersInContent(entry.asset.content) }
+          : {}),
       });
       result.applied++;
     } catch (err) {

@@ -21,6 +21,15 @@ function makeEntry(
       : type === "agents"
         ? "AGENTS.md"
         : `${type}/demo.md`;
+  const content =
+    type === "mcp"
+      ? JSON.stringify({
+          mcpServers: {
+            server1: { command: "npx" },
+            server2: { url: "http://x" },
+          },
+        })
+      : canonicalPath;
   return {
     asset: {
       client: "canonical",
@@ -29,8 +38,8 @@ function makeEntry(
       relativePath: canonicalPath,
       canonicalPath,
       name: canonicalPath,
-      content: canonicalPath,
-      hash: hashContent(canonicalPath),
+      content,
+      hash: hashContent(content),
     },
     targetClient,
     targetPath,
@@ -76,9 +85,9 @@ describe("reporting", () => {
     ]);
 
     expect(lines).toEqual([
-      "import      1 change (agents 1)",
+      "import      1 change (AGENTS.md)",
       "sync        codex: 1 change (commands 1)",
-      "sync        cursor: 2 changes (agents 1, mcp 1)",
+      "sync        cursor: 2 changes (AGENTS.md, mcp 2)",
     ]);
   });
 
