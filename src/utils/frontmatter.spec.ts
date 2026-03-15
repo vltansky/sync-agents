@@ -288,4 +288,123 @@ Just a command.`;
       expect(result).toBe(content);
     });
   });
+
+  describe("MCP transforms", () => {
+    const canonicalMcp = JSON.stringify(
+      {
+        mcpServers: {
+          context7: { command: "npx", args: ["-y", "context7-mcp"] },
+          octocode: { command: "npx", args: ["-y", "octocode-mcp"] },
+        },
+      },
+      null,
+      2,
+    );
+
+    it("merges MCP into existing Codex config.toml without clobbering", () => {
+      const existingToml = [
+        'model = "gpt-5"',
+        'sandbox_mode = "danger-full-access"',
+        "",
+        '[projects."/home/user/repo"]',
+        'trust_level = "trusted"',
+        "",
+        "[mcp_servers.old-server]",
+        'command = "old"',
+      ].join("\n");
+
+      const result = transformContentForClient(
+        canonicalMcp,
+        "codex",
+        "mcp",
+        existingToml,
+      );
+
+      // Preserved existing settings
+      expect(result).toContain('model = "gpt-5"');
+      expect(result).toContain('sandbox_mode = "danger-full-access"');
+      expect(result).toContain('trust_level = "trusted"');
+      // Replaced MCP sections
+      expect(result).toContain("[mcp_servers.context7]");
+      expect(result).toContain("[mcp_servers.octocode]");
+      // Old MCP section removed
+      expect(result).not.toContain("[mcp_servers.old-server]");
+      // No JSON in output
+      expect(result).not.toContain("mcpServers");
+    });
+
+    it("merges MCP into existing Claude .claude.json without clobbering", () => {
+      const existingJson = JSON.stringify(
+        {
+          numStartups: 100,
+          installMethod: "native",
+          mcpServers: { "old-server": { command: "old" } },
+        },
+        null,
+        2,
+      );
+
+      const result = transformContentForClient(
+        canonicalMcp,
+        "claude",
+        "mcp",
+        existingJson,
+      );
+
+      const parsed = JSON.parse(result);
+      expect(parsed.numStartups).toBe(100);
+      expect(parsed.installMethod).toBe("native");
+      expect(parsed.mcpServers.context7).toBeDefined();
+      expect(parsed.mcpServers.octocode).toBeDefined();
+    });
+
+    it("merges MCP into existing OpenCode opencode.json without clobbering", () => {
+      const existingJson = JSON.stringify(
+        { theme: "dark", mcp: { "old-server": { type: "local" } } },
+        null,
+        2,
+      );
+
+      const result = transformContentForClient(
+        canonicalMcp,
+        "opencode",
+        "mcp",
+        existingJson,
+      );
+
+      const parsed = JSON.parse(result);
+      expect(parsed.theme).toBe("dark");
+      expect(parsed.mcp.context7).toBeDefined();
+      expect(parsed.mcp.context7.type).toBe("local");
+    });
+
+    it("handles bare server map (no mcpServers wrapper)", () => {
+      const bareMcp = JSON.stringify(
+        {
+          server1: { command: "npx", args: ["-y", "server1-mcp"] },
+        },
+        null,
+        2,
+      );
+
+      const existingToml = 'model = "gpt-5"\n';
+      const result = transformContentForClient(
+        bareMcp,
+        "codex",
+        "mcp",
+        existingToml,
+      );
+
+      expect(result).toContain('model = "gpt-5"');
+      expect(result).toContain("[mcp_servers.server1]");
+    });
+
+    it("creates Codex TOML from scratch when no existing file", () => {
+      const result = transformContentForClient(canonicalMcp, "codex", "mcp");
+
+      expect(result).toContain("[mcp_servers.context7]");
+      expect(result).toContain("[mcp_servers.octocode]");
+      expect(result).not.toContain("mcpServers");
+    });
+  });
 });

@@ -338,7 +338,12 @@ function transformMcpForOpenCode(
     try {
       existing = JSON.parse(existingContent);
     } catch {
-      // can't parse existing — start fresh
+      // Existing file is invalid JSON — return only MCP to avoid erasing unknown content.
+      // The caller will detect the content change and write the file.
+      console.warn(
+        "Warning: existing opencode.json is not valid JSON, writing MCP only",
+      );
+      return JSON.stringify({ mcp }, null, 2);
     }
   }
 
@@ -417,7 +422,10 @@ function transformMcpForClaude(
     try {
       existing = JSON.parse(existingContent);
     } catch {
-      // can't parse existing — start fresh
+      console.warn(
+        "Warning: existing .claude.json is not valid JSON, writing MCP only",
+      );
+      return JSON.stringify({ mcpServers: parsed.mcpServers }, null, 2);
     }
   }
 

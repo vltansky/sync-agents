@@ -297,7 +297,13 @@ async function collectGeneratedStateEntries(
   const generated: GeneratedStateEntry[] = [];
 
   for (const entry of plan) {
-    const stats = await fs.lstat(entry.targetPath);
+    let mode: "symlink" | "copy" = "copy";
+    try {
+      const stats = await fs.lstat(entry.targetPath);
+      if (stats.isSymbolicLink()) mode = "symlink";
+    } catch {
+      continue;
+    }
     const sourceContent = await readFileSafe(entry.asset.path);
     generated.push({
       path: entry.targetPath,
@@ -305,7 +311,7 @@ async function collectGeneratedStateEntries(
       canonicalPath: entry.asset.canonicalPath ?? entry.asset.relativePath,
       targetClient: entry.targetClient,
       type: entry.asset.type as GeneratedStateEntry["type"],
-      mode: stats.isSymbolicLink() ? "symlink" : "copy",
+      mode,
       expectedContent:
         sourceContent === entry.asset.content ? undefined : entry.asset.content,
     });

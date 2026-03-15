@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 const BACKUP_PREFIX = "__SYNC_AGENTS_BACKUP_V1__\n";
 
@@ -55,10 +54,6 @@ export function expandHome(inputPath: string): string {
     return path.join(process.env.HOME ?? "", inputPath.slice(1));
   }
   return inputPath;
-}
-
-export function toFileUrl(filePath: string): string {
-  return pathToFileURL(filePath).href;
 }
 
 export async function getFileMtime(filePath: string): Promise<Date | null> {

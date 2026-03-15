@@ -11,6 +11,7 @@ import {
 } from "../clients/definitions.js";
 import { discoverAssets } from "./discovery.js";
 import { hashContent } from "./fs.js";
+import { detectMcpFormat, parseMcpConfig, serializeMcpConfig } from "./mcp.js";
 import {
   buildTargetAbsolutePath,
   remapRelativePathForTarget,
@@ -112,8 +113,27 @@ export function buildBootstrapEntry(
   asset: AssetContent,
 ): SyncPlanEntry {
   const canonicalAsset = synthesizeCanonicalAsset(projectRoot, asset);
+
+  // MCP assets from non-JSON sources (e.g. Codex config.toml) must be
+  // converted to canonical JSON format before writing to mcp.json.
+  let importAsset = asset;
+  if (asset.type === "mcp") {
+    const format = detectMcpFormat(asset.path);
+    if (format !== "json" && format !== "jsonc") {
+      const parsed = parseMcpConfig(asset.content, format);
+      if (parsed?.mcpServers) {
+        const jsonContent = serializeMcpConfig(parsed, "json");
+        importAsset = {
+          ...asset,
+          content: jsonContent,
+          hash: hashContent(jsonContent),
+        };
+      }
+    }
+  }
+
   return {
-    asset,
+    asset: importAsset,
     targetClient: "canonical",
     targetPath: canonicalAsset.path,
     targetRelativePath: canonicalAsset.relativePath,

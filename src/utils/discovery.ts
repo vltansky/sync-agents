@@ -60,7 +60,9 @@ export async function discoverAssets(
             if (value === undefined || value === null) {
               continue;
             }
-            content = JSON.stringify(value, null, 2);
+            // Wrap extracted value in canonical format so the key is preserved
+            // e.g. jsonKey="mcpServers" → { mcpServers: {...} }
+            content = JSON.stringify({ [assetDef.jsonKey]: value }, null, 2);
           } catch {
             continue;
           }

@@ -17,7 +17,6 @@ import {
   fileExists,
 } from "./fs.js";
 import { transformContentForClient } from "./frontmatter.js";
-import { updateManifest, pruneStaleFiles } from "./manifest.js";
 
 const BACKUP_DIR = path.join(os.homedir(), ".link-agents", "backups");
 
@@ -101,7 +100,10 @@ export async function applyPlan(
       entry.asset.type,
       existingTargetContent,
     );
+    // MCP assets target shared config files (config.toml, .claude.json, etc.)
+    // and must always be merge-copied, never symlinked.
     const symlinkEligible =
+      entry.asset.type !== "mcp" &&
       Boolean(options.link) &&
       (await canWriteAsSymlink(entry, transformedContent));
     const actionLabel = getWriteModeLabel(symlinkEligible, entry.action);
@@ -161,13 +163,20 @@ export async function applyPlan(
     let backupPath: string | null = null;
 
     try {
-      // Create backup before overwrite
       backupPath = await createBackup(entry.targetPath);
       if (backupPath) {
         result.backups.push(backupPath);
         if (options.verbose) {
           console.log(chalk.dim(`  backup: ${backupPath}`));
         }
+      } else if (await fileExists(entry.targetPath)) {
+        // File exists but backup failed — don't overwrite without a safety net
+        const error = `Backup failed for ${entry.targetPath}, skipping to avoid data loss`;
+        result.errors.push(error);
+        console.log(chalk.red(`  ✗ ${error}`));
+        result.failed++;
+        await rollbackChanges(appliedChanges, result, options.verbose);
+        return result;
       }
 
       if (symlinkEligible) {
@@ -223,6 +232,17 @@ async function canWriteAsSymlink(
   entry: SyncPlanEntry,
   transformedContent: string,
 ): Promise<boolean> {
+  // Don't symlink if source is itself a symlink — prevents circular chains
+  // (e.g. canonical → opencode → canonical)
+  try {
+    const stats = await fs.lstat(entry.asset.path);
+    if (stats.isSymbolicLink()) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
   const sourceContent = await readFileSafe(entry.asset.path);
   return sourceContent === transformedContent;
 }
@@ -266,6 +286,7 @@ async function rollbackChanges(
   console.log();
   console.log(chalk.yellow(`Rolling back ${changes.length} change(s)...`));
 
+  let failures = 0;
   for (const change of changes.reverse()) {
     if (change.backupPath) {
       const restored = await restoreBackup(
@@ -278,12 +299,32 @@ async function rollbackChanges(
         }
       } else {
         result.errors.push(`Failed to restore ${change.targetPath}`);
+        failures++;
+      }
+    } else {
+      // Newly created file (no prior backup) — remove it
+      try {
+        await fs.rm(change.targetPath, { force: true });
+        if (verbose) {
+          console.log(chalk.dim(`  removed: ${change.targetPath}`));
+        }
+      } catch {
+        result.errors.push(`Failed to remove ${change.targetPath}`);
+        failures++;
       }
     }
   }
 
   result.rolledBack = true;
-  console.log(chalk.yellow("Rollback complete."));
+  if (failures > 0) {
+    console.log(
+      chalk.red(
+        `Rollback incomplete: ${failures} file(s) could not be restored.`,
+      ),
+    );
+  } else {
+    console.log(chalk.yellow("Rollback complete."));
+  }
 }
 
 /**
@@ -321,32 +362,4 @@ export async function cleanupOldBackups(): Promise<number> {
   } catch {
     return 0;
   }
-}
-
-/**
- * Update manifest with generated files and prune stale files.
- */
-export async function postApplyCleanup(
-  appliedPaths: string[],
-  verbose?: boolean,
-): Promise<{ pruned: string[]; manifestUpdated: boolean }> {
-  // Prune stale files from previous syncs
-  const pruned = await pruneStaleFiles(appliedPaths);
-  if (pruned.length > 0 && verbose) {
-    console.log(chalk.dim(`Cleaned up ${pruned.length} stale file(s)`));
-    for (const f of pruned) {
-      console.log(chalk.dim(`  removed: ${f}`));
-    }
-  }
-
-  // Update manifest with current files
-  await updateManifest(appliedPaths);
-
-  // Cleanup old backups
-  const deletedBackups = await cleanupOldBackups();
-  if (deletedBackups > 0 && verbose) {
-    console.log(chalk.dim(`Cleaned up ${deletedBackups} old backup(s)`));
-  }
-
-  return { pruned, manifestUpdated: true };
 }

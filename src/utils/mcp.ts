@@ -197,17 +197,43 @@ export function parseMcpConfig(
   }
 
   try {
+    let config: McpConfig;
     switch (format) {
       case "json":
       case "jsonc":
-        return parseJsonWithComments(content);
+        config = parseJsonWithComments(content);
+        break;
       case "toml":
-        return parseToml(content);
+        config = parseToml(content);
+        break;
       case "yaml":
-        return parseYaml(content);
+        config = parseYaml(content);
+        break;
       default:
         return null;
     }
+
+    // Handle bare server map (e.g. from jsonKey extraction):
+    // { "server1": { "command": "npx" }, ... } → wrap in { mcpServers: {...} }
+    if (!config.mcpServers && format !== "toml") {
+      const values = Object.values(config);
+      const looksLikeServerMap =
+        values.length > 0 &&
+        values.every(
+          (v) =>
+            typeof v === "object" &&
+            v !== null &&
+            !Array.isArray(v) &&
+            ("command" in v || "url" in v),
+        );
+      if (looksLikeServerMap) {
+        return {
+          mcpServers: config as unknown as Record<string, McpServerConfig>,
+        };
+      }
+    }
+
+    return config;
   } catch {
     return null;
   }
@@ -422,9 +448,6 @@ function parseTomlValue(value: string): unknown {
   return value;
 }
 
-/**
- * Serialize to TOML
- */
 function serializeToml(config: McpConfig, _indent: number): string {
   let output = "";
 
@@ -434,6 +457,15 @@ function serializeToml(config: McpConfig, _indent: number): string {
     )) {
       output += `[mcp_servers.${serverName}]\n`;
       for (const [key, value] of Object.entries(serverConfig)) {
+        // Skip empty objects (e.g. env = {})
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          !Array.isArray(value) &&
+          Object.keys(value).length === 0
+        ) {
+          continue;
+        }
         output += `${key} = ${serializeTomlValue(value)}\n`;
       }
       output += "\n";
@@ -443,9 +475,6 @@ function serializeToml(config: McpConfig, _indent: number): string {
   return output.trim();
 }
 
-/**
- * Serialize TOML value
- */
 function serializeTomlValue(value: unknown): string {
   if (typeof value === "string") {
     return `"${value}"`;
@@ -454,7 +483,11 @@ function serializeTomlValue(value: unknown): string {
     return `[${value.map(serializeTomlValue).join(", ")}]`;
   }
   if (typeof value === "object" && value !== null) {
-    return JSON.stringify(value);
+    // TOML inline table: { key = "val", key2 = "val2" }
+    const entries = Object.entries(value)
+      .map(([k, v]) => `${k} = ${serializeTomlValue(v)}`)
+      .join(", ");
+    return `{ ${entries} }`;
   }
   return String(value);
 }
