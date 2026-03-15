@@ -12,9 +12,6 @@ describe("parseCliArgs", () => {
       "sync",
       "--dry-run",
       "--link",
-      "--separate-claude-md",
-      "--bootstrap-source",
-      "claude",
       "--types",
       "agents,mcp",
     ]);
@@ -26,8 +23,6 @@ describe("parseCliArgs", () => {
       verbose: false,
       link: true,
       copy: false,
-      separateClaudeMd: true,
-      bootstrapSource: "claude",
       types: ["agents", "mcp"],
     });
   });
@@ -72,8 +67,6 @@ describe("parseCliArgs", () => {
       verbose: false,
       link: false,
       copy: false,
-      separateClaudeMd: false,
-      bootstrapSource: undefined,
       types: undefined,
     });
   });

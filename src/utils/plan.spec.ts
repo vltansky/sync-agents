@@ -175,12 +175,12 @@ describe("buildSyncPlan", () => {
       },
       {
         client: "canonical",
-        type: "commands",
-        path: "/project/commands/test.md",
-        relativePath: "commands/test.md",
-        canonicalPath: "commands/test.md",
+        type: "skills",
+        path: "/project/skills/commands/test/SKILL.md",
+        relativePath: "skills/commands/test/SKILL.md",
+        canonicalPath: "skills/commands/test/SKILL.md",
         name: "test",
-        content: "command content",
+        content: "skill content",
         hash: "hash2",
       },
     ];
@@ -192,7 +192,7 @@ describe("buildSyncPlan", () => {
         root: "/claude",
         assets: [
           { type: "agents", patterns: ["AGENTS.md"] },
-          { type: "commands", patterns: ["commands/**/*.md"] },
+          { type: "skills", patterns: ["skills/**/SKILL.md"] },
         ],
       },
     ];
@@ -206,7 +206,9 @@ describe("buildSyncPlan", () => {
 
     expect(desiredAssets.size).toBe(1);
     expect(desiredAssets.has("agents::AGENTS.md")).toBe(true);
-    expect(desiredAssets.has("commands::commands/test.md")).toBe(false);
+    expect(desiredAssets.has("skills::skills/commands/test/SKILL.md")).toBe(
+      false,
+    );
   });
 
   it("should use source mode when specified", () => {
@@ -255,7 +257,7 @@ describe("buildSyncPlan", () => {
     expect(asset?.content).toBe("claude content");
   });
 
-  it("should skip syncing AGENTS.md to Claude when separateClaudeMd is enabled", () => {
+  it("should keep syncing AGENTS.md to Claude", () => {
     const assets: AssetContent[] = [
       {
         client: "canonical",
@@ -292,12 +294,11 @@ describe("buildSyncPlan", () => {
 
     const options = {
       mode: "merge" as const,
-      separateClaudeMd: true,
     };
 
     const { plan } = buildSyncPlan(assets, defs, options);
 
-    expect(plan.some((entry) => entry.targetClient === "claude")).toBe(false);
+    expect(plan.some((entry) => entry.targetClient === "claude")).toBe(true);
     expect(plan.some((entry) => entry.targetClient === "cursor")).toBe(true);
   });
 

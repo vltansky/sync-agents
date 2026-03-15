@@ -11,7 +11,13 @@ import {
 } from "../clients/definitions.js";
 import { discoverAssets } from "./discovery.js";
 import { hashContent } from "./fs.js";
-import { detectMcpFormat, parseMcpConfig, serializeMcpConfig } from "./mcp.js";
+import { ensureSkillFrontmatter } from "./frontmatter.js";
+import {
+  detectMcpFormat,
+  mergeMcpConfigs,
+  parseMcpConfig,
+  serializeMcpConfig,
+} from "./mcp.js";
 import {
   buildTargetAbsolutePath,
   remapRelativePathForTarget,
@@ -19,8 +25,6 @@ import {
 } from "./paths.js";
 import { shouldSkipTargetAsset } from "./syncFilters.js";
 import type { SyncCommandOptions, SyncPlanEntry } from "../types/index.js";
-
-const CODEX_COMMAND_METADATA = "policy:\n  allow_implicit_invocation: false\n";
 
 export function buildCanonicalDefinition(
   projectRoot: string,
@@ -31,7 +35,6 @@ export function buildCanonicalDefinition(
     root: path.join(projectRoot, ".agents"),
     assets: [
       { type: "agents", patterns: ["AGENTS.md"] },
-      { type: "commands", patterns: ["commands/**/*.md"] },
       { type: "skills", patterns: ["skills/**/SKILL.md"] },
       { type: "mcp", patterns: [], files: ["mcp.json"] },
     ],
@@ -108,23 +111,36 @@ export function synthesizeCanonicalAsset(
   };
 }
 
-export function buildBootstrapEntry(
+export function materializeCanonicalAsset(
   projectRoot: string,
   asset: AssetContent,
-): SyncPlanEntry {
+): AssetContent {
   const canonicalAsset = synthesizeCanonicalAsset(projectRoot, asset);
+  let materialized = canonicalAsset;
 
-  // MCP assets from non-JSON sources (e.g. Codex config.toml) must be
-  // converted to canonical JSON format before writing to mcp.json.
-  let importAsset = asset;
-  if (asset.type === "mcp") {
+  if (
+    materialized.type === "skills" &&
+    !materialized.content.startsWith("---")
+  ) {
+    const skillContent = ensureSkillFrontmatter(
+      materialized.content,
+      materialized.name,
+    );
+    materialized = {
+      ...materialized,
+      content: skillContent,
+      hash: hashContent(skillContent),
+    };
+  }
+
+  if (materialized.type === "mcp") {
     const format = detectMcpFormat(asset.path);
     if (format !== "json" && format !== "jsonc") {
-      const parsed = parseMcpConfig(asset.content, format);
+      const parsed = parseMcpConfig(materialized.content, format);
       if (parsed?.mcpServers) {
         const jsonContent = serializeMcpConfig(parsed, "json");
-        importAsset = {
-          ...asset,
+        materialized = {
+          ...materialized,
           content: jsonContent,
           hash: hashContent(jsonContent),
         };
@@ -132,8 +148,72 @@ export function buildBootstrapEntry(
     }
   }
 
+  return materialized;
+}
+
+export function selectLatestAsset(candidates: AssetContent[]): AssetContent {
+  if (candidates.length === 0) {
+    throw new Error("selectLatestAsset requires at least one candidate");
+  }
+
+  return [...candidates].sort(compareAssetFreshness)[0];
+}
+
+export function collectCanonicalAsset(
+  projectRoot: string,
+  candidates: AssetContent[],
+): AssetContent {
+  const newest = selectLatestAsset(candidates);
+  if (newest.type !== "mcp") {
+    return materializeCanonicalAsset(projectRoot, newest);
+  }
+
+  const mergedConfigs = [...candidates]
+    .sort(compareAssetFreshness)
+    .reverse()
+    .map((asset) => parseMcpConfig(asset.content, detectMcpFormat(asset.path)))
+    .filter((config): config is NonNullable<typeof config> => config !== null);
+
+  if (mergedConfigs.length === 0) {
+    return materializeCanonicalAsset(projectRoot, newest);
+  }
+
+  const content = serializeMcpConfig(mergeMcpConfigs(mergedConfigs), "json");
+  const canonicalAsset = synthesizeCanonicalAsset(projectRoot, newest);
   return {
-    asset: importAsset,
+    ...canonicalAsset,
+    content,
+    hash: hashContent(content),
+  };
+}
+
+function compareAssetFreshness(a: AssetContent, b: AssetContent): number {
+  const timeA = a.modifiedAt?.getTime() ?? 0;
+  const timeB = b.modifiedAt?.getTime() ?? 0;
+  if (timeA !== timeB) {
+    return timeB - timeA;
+  }
+  if (a.client === "canonical" && b.client !== "canonical") {
+    return -1;
+  }
+  if (b.client === "canonical" && a.client !== "canonical") {
+    return 1;
+  }
+  const clientCmp = a.client.localeCompare(b.client);
+  if (clientCmp !== 0) {
+    return clientCmp;
+  }
+  return a.path.localeCompare(b.path);
+}
+
+export function buildBootstrapEntry(
+  projectRoot: string,
+  asset: AssetContent,
+): SyncPlanEntry {
+  const canonicalAsset = materializeCanonicalAsset(projectRoot, asset);
+
+  return {
+    asset: canonicalAsset,
     targetClient: "canonical",
     targetPath: canonicalAsset.path,
     targetRelativePath: canonicalAsset.relativePath,
@@ -178,43 +258,10 @@ export function buildFanoutPlan(
           reason: "sync",
         });
       }
-
-      if (def.name === "codex" && asset.type === "commands") {
-        plan.push(
-          buildCodexCommandMetadataEntry(asset, def.root, targetRelative),
-        );
-      }
     }
   }
 
   return plan;
-}
-
-function buildCodexCommandMetadataEntry(
-  asset: AssetContent,
-  root: string,
-  commandTargetRelative: string,
-): SyncPlanEntry {
-  const metadataRelative = normalizeCodexMetadataPath(commandTargetRelative);
-  const syntheticAsset: AssetContent = {
-    ...asset,
-    content: CODEX_COMMAND_METADATA,
-    hash: hashContent(CODEX_COMMAND_METADATA),
-    name: `${asset.name}-openai-yaml`,
-  };
-
-  return {
-    asset: syntheticAsset,
-    targetClient: "codex",
-    targetPath: buildTargetAbsolutePath(root, metadataRelative),
-    targetRelativePath: metadataRelative,
-    action: "create",
-    reason: "sync",
-  };
-}
-
-function normalizeCodexMetadataPath(commandTargetRelative: string): string {
-  return commandTargetRelative.replace(/\/SKILL\.md$/i, "/agents/openai.yaml");
 }
 
 export function getBootstrapChoices(

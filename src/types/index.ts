@@ -13,7 +13,7 @@ export type AssetType =
   | "mcp"
   | "prompts";
 
-export type ManagedAssetType = "agents" | "commands" | "skills" | "mcp";
+export type ManagedAssetType = "agents" | "skills" | "mcp";
 
 export type SyncScope = "project" | "global" | "all";
 export type SyncDirection = "push" | "pull" | "sync";
@@ -71,7 +71,6 @@ export interface SyncOptions {
   revert?: boolean;
   revertList?: boolean;
   link?: boolean;
-  separateClaudeMd?: boolean;
 }
 
 export interface SyncCommandOptions {
@@ -82,8 +81,6 @@ export interface SyncCommandOptions {
   verbose: boolean;
   link: boolean;
   copy: boolean;
-  separateClaudeMd: boolean;
-  bootstrapSource?: AgentClientName;
 }
 
 export interface DoctorCommandOptions {

@@ -10,23 +10,19 @@ import type {
 } from "../types/index.js";
 import { applyPlan, type ApplyResult } from "../utils/apply.js";
 import {
-  buildBootstrapEntry,
   buildCanonicalDefinition,
   buildFanoutPlan,
-  buildLegacyDefinitions,
+  collectCanonicalAsset,
   discoverCanonicalAssets,
   discoverIgnoredCursorRules,
   discoverLegacyAssets,
-  getBootstrapChoices,
   groupAssetsByCanonicalKey,
-  synthesizeCanonicalAsset,
 } from "../utils/canonical.js";
 import {
   writeCanonicalState,
   type GeneratedStateEntry,
 } from "../utils/canonicalState.js";
 import { fileExists, readFileSafe } from "../utils/fs.js";
-import { getBootstrapResolution } from "../utils/bootstrap.js";
 import { createSnapshot, restoreSnapshot } from "../utils/snapshots.js";
 import {
   buildSyncPlanSummaryLines,
@@ -49,70 +45,32 @@ export async function runSyncCommand(
   const legacyAssets = await discoverLegacyAssets(projectRoot, options.types);
   const ignoredCursorRules = await discoverIgnoredCursorRules(projectRoot);
 
-  const canonicalByKey = groupAssetsByCanonicalKey(canonicalAssets);
-  const legacyByKey = groupAssetsByCanonicalKey(
-    legacyAssets.filter((asset) => asset.type !== "rules"),
-  );
-
-  const bootstrapEntries: SyncPlanEntry[] = [];
-  const synthesizedCanonical = [...canonicalAssets];
-
-  for (const [, candidates] of legacyByKey.entries()) {
-    if (
-      canonicalByKey.has(
-        `${candidates[0].type}::${candidates[0].canonicalPath ?? candidates[0].relativePath}`,
-      )
-    ) {
-      continue;
-    }
-
-    const canonicalPath =
-      candidates[0].canonicalPath ?? candidates[0].relativePath;
-    const resolution = getBootstrapResolution({
-      canonicalPath,
-      candidates,
-      bootstrapSource: options.bootstrapSource,
-    });
-
-    if (resolution.status === "missing") {
-      continue;
-    }
-
-    if (resolution.status === "ambiguous") {
-      const selected = await chooseBootstrapCandidate(
-        canonicalPath,
-        resolution.candidates,
-      );
-      if (!selected) {
-        p.cancel("Cancelled.");
-        process.exit(1);
-      }
-      bootstrapEntries.push(buildBootstrapEntry(projectRoot, selected));
-      synthesizedCanonical.push(
-        synthesizeCanonicalAsset(projectRoot, selected),
-      );
-      continue;
-    }
-
-    bootstrapEntries.push(buildBootstrapEntry(projectRoot, resolution.asset));
-    synthesizedCanonical.push(
-      synthesizeCanonicalAsset(projectRoot, resolution.asset),
+  const existingCanonicalByKey = groupAssetsByCanonicalKey(canonicalAssets);
+  const discoveredByKey = groupAssetsByCanonicalKey([
+    ...canonicalAssets,
+    ...legacyAssets.filter((asset) => asset.type !== "rules"),
+  ]);
+  const canonicalWinners = [...discoveredByKey.values()]
+    .map((candidates) => collectCanonicalAsset(projectRoot, candidates))
+    .sort((a, b) =>
+      (a.canonicalPath ?? a.relativePath).localeCompare(
+        b.canonicalPath ?? b.relativePath,
+      ),
     );
-  }
+
+  const collectionPlan = buildCanonicalCollectionPlan(
+    canonicalWinners,
+    existingCanonicalByKey,
+  );
 
   const resolvedLinkMode = await resolveWriteMode(options);
   const syncOptions = { ...options, link: resolvedLinkMode };
-  const fanoutPlan = buildFanoutPlan(
-    synthesizedCanonical,
-    targetDefs,
-    syncOptions,
-  );
-  const plan = [...bootstrapEntries, ...fanoutPlan];
+  const fanoutPlan = buildFanoutPlan(canonicalWinners, targetDefs, syncOptions);
+  const plan = [...collectionPlan, ...fanoutPlan];
 
-  // Configuration box
   const types = options.types?.length
     ? options.types.join(", ")
-    : "agents, commands, skills, mcp";
+    : "agents, skills, mcp";
   const targets =
     targetDefs.length > 0 ? targetDefs.map((d) => d.name).join(", ") : "none";
 
@@ -122,12 +80,11 @@ export async function runSyncCommand(
     `Root:        ${abbreviateHome(path.join(projectRoot, ".agents"))}`,
     `Targets:     ${targets}`,
     `Types:       ${types}`,
-    `Canonical:   ${canonicalAssets.length} assets`,
-    `Imported:    ${bootstrapEntries.length} new`,
+    `Existing:    ${canonicalAssets.length} canonical asset(s)`,
+    `Collected:   ${canonicalWinners.length} winner(s)`,
   ];
   p.note(configLines.join("\n"), "Configuration");
 
-  // Warnings
   if (ignoredCursorRules.length > 0) {
     p.log.warn(
       `${ignoredCursorRules.length} ignored legacy cursor rule(s) -- manage via .agents/AGENTS.md`,
@@ -139,9 +96,7 @@ export async function runSyncCommand(
     return;
   }
 
-  // Plan box
-  const planLines = buildSyncPlanSummaryLines(plan);
-  p.note(planLines.join("\n"), "Plan");
+  p.note(buildSyncPlanSummaryLines(plan).join("\n"), "Plan");
 
   const clientRoots = buildClientRootsMap(projectRoot, targetDefs);
 
@@ -151,14 +106,12 @@ export async function runSyncCommand(
       dryRun: true,
       verbose: options.verbose,
       link: resolvedLinkMode,
-      separateClaudeMd: options.separateClaudeMd,
     });
     printSyncTree(dryResult, clientRoots);
     p.outro(formatResultLine(dryResult, true));
     return;
   }
 
-  // Execute with spinner
   const spin = p.spinner();
 
   spin.start("Creating snapshot...");
@@ -170,14 +123,12 @@ export async function runSyncCommand(
   spin.stop(`Snapshot ${snapshot.id.slice(0, 12)}...`);
 
   if (options.verbose) {
-    // Verbose mode: let applyPlan print per-entry details directly
     p.log.step("Syncing assets...");
     const applyResult = await applyPlan(plan, {
       mode: "merge",
       dryRun: false,
       verbose: true,
       link: resolvedLinkMode,
-      separateClaudeMd: options.separateClaudeMd,
     });
 
     if (applyResult.failed > 0) {
@@ -190,30 +141,52 @@ export async function runSyncCommand(
     printSyncTree(applyResult, clientRoots);
     printErrors(applyResult);
     p.outro(formatResultLine(applyResult));
-  } else {
-    // Non-verbose: animated spinner
-    spin.start("Syncing assets...");
-    const applyResult = await applyPlan(plan, {
-      mode: "merge",
-      dryRun: false,
-      verbose: false,
-      link: resolvedLinkMode,
-      separateClaudeMd: options.separateClaudeMd,
-    });
-
-    if (applyResult.failed > 0) {
-      spin.stop("Sync failed");
-      await restoreSnapshot(snapshot.id);
-      p.cancel(`Sync failed -- restored snapshot ${snapshot.id}`);
-      process.exit(1);
-    }
-
-    spin.stop(formatResultLine(applyResult));
-    await writeCanonicalState(await collectGeneratedStateEntries(fanoutPlan));
-    printSyncTree(applyResult, clientRoots);
-    printErrors(applyResult);
-    p.outro("Sync complete");
+    return;
   }
+
+  spin.start("Syncing assets...");
+  const applyResult = await applyPlan(plan, {
+    mode: "merge",
+    dryRun: false,
+    verbose: false,
+    link: resolvedLinkMode,
+  });
+
+  if (applyResult.failed > 0) {
+    spin.stop("Sync failed");
+    await restoreSnapshot(snapshot.id);
+    p.cancel(`Sync failed -- restored snapshot ${snapshot.id}`);
+    process.exit(1);
+  }
+
+  spin.stop(formatResultLine(applyResult));
+  await writeCanonicalState(await collectGeneratedStateEntries(fanoutPlan));
+  printSyncTree(applyResult, clientRoots);
+  printErrors(applyResult);
+  p.outro("Sync complete");
+}
+
+function buildCanonicalCollectionPlan(
+  canonicalWinners: AssetContent[],
+  existingCanonicalByKey: Map<string, AssetContent[]>,
+): SyncPlanEntry[] {
+  const collectionPlan: SyncPlanEntry[] = [];
+
+  for (const canonicalAsset of canonicalWinners) {
+    const key = `${canonicalAsset.type}::${canonicalAsset.canonicalPath ?? canonicalAsset.relativePath}`;
+    const existing = existingCanonicalByKey.get(key)?.[0];
+
+    collectionPlan.push({
+      asset: canonicalAsset,
+      targetClient: "canonical",
+      targetPath: canonicalAsset.path,
+      targetRelativePath: canonicalAsset.relativePath,
+      action: existing ? "update" : "create",
+      reason: "collect",
+    });
+  }
+
+  return collectionPlan;
 }
 
 function formatResultLine(result: ApplyResult, dryRun?: boolean): string {
@@ -234,41 +207,10 @@ function printErrors(result: ApplyResult): void {
   p.log.error(`Errors:\n${lines}`);
 }
 
-async function chooseBootstrapCandidate(
-  canonicalPath: string,
-  candidates: AssetContent[],
-): Promise<AssetContent | null> {
-  if (!process.stdout.isTTY || !process.stdin.isTTY) {
-    throw new Error(
-      `Multiple versions found for ${canonicalPath}. Re-run interactively or pass --bootstrap-source <client>.`,
-    );
-  }
-
-  const sorted = [...candidates].sort((a, b) => {
-    const ta = a.modifiedAt?.getTime() ?? 0;
-    const tb = b.modifiedAt?.getTime() ?? 0;
-    return tb - ta;
-  });
-
-  const choice = await p.select({
-    message: `Multiple versions of ${canonicalPath} found — pick one to use as source`,
-    options: [
-      ...getBootstrapChoices(sorted),
-      { value: "__cancel__", label: "Cancel" },
-    ],
-  });
-
-  if (p.isCancel(choice) || choice === "__cancel__") {
-    return null;
-  }
-
-  return candidates.find((asset) => asset.path === choice) ?? null;
-}
-
 async function resolveWriteMode(options: SyncCommandOptions): Promise<boolean> {
   if (options.link) return true;
   if (options.copy) return false;
-  if (!process.stdout.isTTY || !process.stdin.isTTY) return false;
+  if (!process.stdout.isTTY || !process.stdin.isTTY) return true;
 
   const mode = await p.select({
     message: "How should files be written?",

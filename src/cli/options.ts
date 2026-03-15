@@ -1,23 +1,8 @@
 import os from "node:os";
 import { Command } from "commander";
-import type {
-  AgentClientName,
-  CliCommandOptions,
-  ManagedAssetType,
-} from "../types/index.js";
+import type { CliCommandOptions, ManagedAssetType } from "../types/index.js";
 
-const CLIENT_CHOICES: AgentClientName[] = [
-  "codex",
-  "claude",
-  "cursor",
-  "opencode",
-];
-const TYPE_CHOICES: ManagedAssetType[] = [
-  "agents",
-  "commands",
-  "skills",
-  "mcp",
-];
+const TYPE_CHOICES: ManagedAssetType[] = ["agents", "skills", "mcp"];
 
 export function parseCliArgs(argv: string[]): CliCommandOptions {
   const program = new Command();
@@ -45,28 +30,12 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
     )
     .option("--copy", "always write independent copies")
     .option(
-      "--separate-claude-md",
-      "leave Claude's CLAUDE.md unmanaged during sync",
-    )
-    .option(
       "--root <path>",
       "root directory for canonical .agents store (default: $HOME)",
-    )
-    .option(
-      "--bootstrap-source <client>",
-      "explicit source client when multiple versions exist during import",
     )
     .action((opts) => {
       if (opts.link && opts.copy) {
         throw new Error("Cannot use --link and --copy together");
-      }
-      if (
-        opts.bootstrapSource &&
-        !CLIENT_CHOICES.includes(opts.bootstrapSource)
-      ) {
-        throw new Error(
-          `Invalid value: ${opts.bootstrapSource}. Allowed: ${CLIENT_CHOICES.join(", ")}`,
-        );
       }
 
       parsed = {
@@ -77,8 +46,6 @@ export function parseCliArgs(argv: string[]): CliCommandOptions {
         verbose: Boolean(opts.verbose),
         link: Boolean(opts.link),
         copy: Boolean(opts.copy),
-        separateClaudeMd: Boolean(opts.separateClaudeMd),
-        bootstrapSource: opts.bootstrapSource,
       };
     });
 
