@@ -78,7 +78,7 @@ describe("merge utilities", () => {
         root: "/home/.claude",
         assets: [
           { type: "agents", patterns: ["CLAUDE.md"] },
-          { type: "commands", patterns: ["commands/**/*.md"] },
+          { type: "skills", patterns: ["skills/**/SKILL.md"] },
           { type: "rules", patterns: [] },
         ],
       };

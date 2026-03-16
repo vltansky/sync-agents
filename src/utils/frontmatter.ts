@@ -369,7 +369,8 @@ function transformMcpForCodex(
   }
 
   // Remove existing [mcp_servers.*] and [mcpServers.*] sections from the file,
-  // then append the new ones.
+  // then append the new ones. Only key-value lines that belong to an MCP section
+  // are removed — other section headers and their content are preserved.
   const lines = existingContent.split("\n");
   const outputLines: string[] = [];
   let inMcpSection = false;
@@ -381,8 +382,8 @@ function transformMcpForCodex(
       inMcpSection = true;
       continue;
     }
-    // Any new section header ends the MCP section
-    if (inMcpSection && /^\[/.test(trimmed)) {
+    // Any section header (including non-MCP) ends the current MCP section
+    if (/^\[/.test(trimmed)) {
       inMcpSection = false;
     }
     if (!inMcpSection) {
@@ -441,6 +442,19 @@ function transformMcpForClaude(
  * client-specific frontmatter keys. Two files that differ only in
  * client-specific keys will produce identical normalized output.
  */
+/**
+ * Ensure SKILL.md content has YAML frontmatter.
+ * Adds a minimal name/description block if missing.
+ */
+export function ensureSkillFrontmatter(content: string, name: string): string {
+  if (FRONTMATTER_REGEX.test(content)) {
+    return content;
+  }
+  const firstLine = content.split("\n")[0].replace(/^#+ */, "").trim();
+  const description = (firstLine || name).replace(/"/g, '\\"');
+  return `---\nname: ${name}\ndescription: "${description}"\n---\n\n${content}`;
+}
+
 export function normalizeForComparison(content: string): string {
   return stripClientSpecificFrontmatter(content, ALL_CLIENT_SPECIFIC_KEYS);
 }
@@ -472,7 +486,7 @@ export function transformContentForClient(
     return transformMcpForClaude(content, existingTargetContent);
   }
 
-  if (assetType === "commands") {
+  if (assetType === "skills") {
     if (STRIP_CURSOR_KEYS_FOR.has(targetClient)) {
       return stripClientSpecificFrontmatter(content, CURSOR_ONLY_KEYS);
     }

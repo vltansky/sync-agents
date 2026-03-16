@@ -54,8 +54,16 @@ export async function createSnapshot(
         "utf8",
       );
       entries.push({ path: targetPath, state: "file", dataFile });
-    } catch {
-      entries.push({ path: targetPath, state: "missing" });
+    } catch (err: unknown) {
+      // Only treat ENOENT as "missing" — other errors (EACCES, EISDIR)
+      // mean the file exists but can't be read, which is a real problem.
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+        entries.push({ path: targetPath, state: "missing" });
+      } else {
+        throw new Error(
+          `Cannot snapshot ${targetPath}: ${(err as Error).message ?? err}`,
+        );
+      }
     }
   }
 

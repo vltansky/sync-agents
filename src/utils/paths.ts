@@ -8,7 +8,6 @@ import type {
 
 const CLAUDE_FILE = "claude.md";
 const AGENTS_FILE = "AGENTS.md";
-const CODEX_COMMANDS_ROOT = "skills/commands";
 
 // Canonical MCP filename used for cross-client matching
 const CANONICAL_MCP_FILE = "mcp.json";
@@ -28,12 +27,6 @@ export function canonicalizeRelativePath(
       return AGENTS_FILE;
     }
   }
-  if (type === "commands" && client === "codex") {
-    return fromCodexCommandPath(normalized);
-  }
-  if (type === "commands" && client === "opencode") {
-    return fromOpenCodeCommandPath(normalized);
-  }
   if (type === "skills" && client === "opencode") {
     return fromOpenCodeSkillPath(normalized);
   }
@@ -41,39 +34,6 @@ export function canonicalizeRelativePath(
     return canonicalizeMcpPath(normalized);
   }
   return normalized;
-}
-
-function fromCodexCommandPath(relativePath: string): string {
-  const normalized = normalizeRelativePath(relativePath);
-  if (normalized.startsWith("prompts/")) {
-    return fromPromptPath(normalized);
-  }
-  if (
-    normalized.startsWith(`${CODEX_COMMANDS_ROOT}/`) &&
-    normalized.endsWith("/SKILL.md")
-  ) {
-    const commandPath = normalized
-      .slice(`${CODEX_COMMANDS_ROOT}/`.length, -"/SKILL.md".length)
-      .split("/")
-      .filter(Boolean)
-      .join("/");
-    return normalizeRelativePath(
-      path.posix.join("commands", `${commandPath}.md`),
-    );
-  }
-  return fromPromptPath(normalized);
-}
-
-function fromPromptPath(relativePath: string): string {
-  const segments = normalizeRelativePath(relativePath)
-    .split("/")
-    .filter(Boolean);
-  if (segments.length === 0) {
-    return "commands/command.md";
-  }
-  const nameSegments = segments.slice(segments[0] === "prompts" ? 1 : 0);
-  const fileName = nameSegments.join("/");
-  return normalizeRelativePath(path.posix.join("commands", fileName));
 }
 
 export function denormalizeRelativePath(
@@ -142,14 +102,12 @@ export function remapRelativePathForTarget(
   defs?: ClientDefinition[],
 ): string {
   const normalized = normalizeRelativePath(relativePath);
-  if (asset.type === "commands" && targetClient === "codex") {
-    return toCodexCommandSkillPath(normalized);
-  }
-  if (asset.type === "commands" && targetClient === "opencode") {
-    return toOpenCodeCommandPath(normalized);
-  }
-  if (asset.type === "skills" && targetClient === "opencode") {
-    return toOpenCodeSkillPath(normalized);
+  if (asset.type === "skills") {
+    const flattened = flattenSkillPath(normalized);
+    if (targetClient === "opencode") {
+      return toOpenCodeSkillPath(flattened);
+    }
+    return flattened;
   }
   if (asset.type === "mcp" && defs) {
     const targetFile = denormalizeMcpPath(targetClient, defs);
@@ -160,40 +118,38 @@ export function remapRelativePathForTarget(
   return normalized;
 }
 
-function toCodexCommandSkillPath(relativePath: string): string {
-  const segments = normalizeRelativePath(relativePath)
-    .split("/")
-    .filter(Boolean);
-  if (segments.length === 0) {
-    return `${CODEX_COMMANDS_ROOT}/command/SKILL.md`;
-  }
-  const nameSegments = segments.slice(segments[0] === "commands" ? 1 : 0);
-  const fileName = nameSegments.join("/").replace(/\.md$/i, "");
-  return normalizeRelativePath(
-    path.posix.join(CODEX_COMMANDS_ROOT, fileName, "SKILL.md"),
-  );
-}
+/**
+ * Flatten nested skill directories into a single level.
+ * Claude Code, Cursor, and Codex expect skills at `skills/<name>/SKILL.md`.
+ * Nested paths like `skills/builder/steps/init/SKILL.md` are flattened to
+ * `skills/builder-steps-init/SKILL.md` by joining intermediate segments with `-`.
+ */
+export function flattenSkillPath(relativePath: string): string {
+  const normalized = normalizeRelativePath(relativePath);
+  const segments = normalized.split("/").filter(Boolean);
 
-function fromOpenCodeCommandPath(relativePath: string): string {
-  const segments = normalizeRelativePath(relativePath)
-    .split("/")
-    .filter(Boolean);
-  if (segments.length === 0) {
-    return "commands/command.md";
-  }
-  const nameSegments = segments.slice(segments[0] === "command" ? 1 : 0);
-  return normalizeRelativePath(path.posix.join("commands", ...nameSegments));
-}
+  // Find the SKILL.md at the end
+  const skillIdx = segments.findIndex((s) => s.toLowerCase() === "skill.md");
+  if (skillIdx < 0) return normalized;
 
-function toOpenCodeCommandPath(relativePath: string): string {
-  const segments = normalizeRelativePath(relativePath)
-    .split("/")
-    .filter(Boolean);
-  if (segments.length === 0) {
-    return "command/command.md";
+  // Find the skills/ prefix
+  const skillsPrefix =
+    segments[0] === "skills" || segments[0] === "skill" ? segments[0] : null;
+  if (!skillsPrefix) return normalized;
+
+  // Get the intermediate segments (between skills/ and /SKILL.md)
+  const middleSegments = segments.slice(1, skillIdx);
+  if (middleSegments.length <= 1) {
+    // Already flat (e.g. skills/review/SKILL.md)
+    return normalized;
   }
-  const nameSegments = segments.slice(segments[0] === "commands" ? 1 : 0);
-  return normalizeRelativePath(path.posix.join("command", ...nameSegments));
+
+  // Flatten: join intermediate segments with dash
+  const flatName = middleSegments.join("-");
+
+  // Preserve any content after SKILL.md (e.g. agents/openai.yaml in subdirectories)
+  const rest = segments.slice(skillIdx);
+  return [skillsPrefix, flatName, ...rest].join("/");
 }
 
 function fromOpenCodeSkillPath(relativePath: string): string {

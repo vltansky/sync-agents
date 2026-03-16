@@ -269,10 +269,20 @@ async function writeSymlinkSafe(
   sourcePath: string,
   targetPath: string,
 ): Promise<void> {
-  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  // Break parent directory symlinks to prevent writing through to canonical
+  const parentDir = path.dirname(targetPath);
+  try {
+    const dirStats = await fs.lstat(parentDir);
+    if (dirStats.isSymbolicLink()) {
+      await fs.unlink(parentDir);
+    }
+  } catch {
+    // Dir doesn't exist yet
+  }
+  await fs.mkdir(parentDir, { recursive: true });
   await fs.rm(targetPath, { force: true, recursive: true });
 
-  const linkTarget = path.relative(path.dirname(targetPath), sourcePath);
+  const linkTarget = path.relative(parentDir, sourcePath);
   await fs.symlink(linkTarget, targetPath);
 }
 

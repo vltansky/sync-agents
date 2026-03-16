@@ -28,7 +28,15 @@ interface CanonicalState {
 export async function readCanonicalState(): Promise<CanonicalState> {
   try {
     return JSON.parse(await fs.readFile(STATE_PATH, "utf8")) as CanonicalState;
-  } catch {
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code !== "ENOENT") {
+      // File exists but is corrupt or unreadable — warn so the user
+      // knows stale-file detection may be unreliable.
+      console.warn(
+        `Warning: cannot read canonical state (${code ?? (err as Error).message}), stale-file detection may be incomplete`,
+      );
+    }
     return { version: 1, updatedAt: new Date(0).toISOString(), generated: [] };
   }
 }

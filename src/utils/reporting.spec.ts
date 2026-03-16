@@ -58,7 +58,7 @@ describe("reporting", () => {
         targets: ["claude", "cursor"],
         writeMode: "copy",
         dryRun: true,
-        types: ["agents", "commands"],
+        types: ["agents", "skills"],
       }),
     ).toEqual([
       "Mode: dry-run",
@@ -67,7 +67,7 @@ describe("reporting", () => {
       "Imported from clients: 1",
       "Ignored legacy inputs: 2",
       "Targets: claude, cursor",
-      "Managed types: agents, commands",
+      "Managed types: agents, skills",
     ]);
   });
 
@@ -75,7 +75,7 @@ describe("reporting", () => {
     const lines = buildSyncPlanSummaryLines([
       makeEntry("agents", "canonical", "/repo/.agents/AGENTS.md", "import"),
       makeEntry(
-        "commands",
+        "skills",
         "codex",
         "/home/.codex/skills/commands/review/SKILL.md",
         "sync",
@@ -86,7 +86,7 @@ describe("reporting", () => {
 
     expect(lines).toEqual([
       "import      1 change (AGENTS.md)",
-      "sync        codex: 1 change (1 commands)",
+      "sync        codex: 1 change (1 skills)",
       "sync        cursor: 2 changes (AGENTS.md, 2 mcp)",
     ]);
   });
@@ -96,15 +96,15 @@ describe("reporting", () => {
       buildDetailedPlanLines([
         makeEntry("agents", "canonical", "/repo/.agents/AGENTS.md", "import"),
         makeEntry(
-          "commands",
+          "skills",
           "claude",
-          "/home/.claude/commands/review.md",
+          "/home/.claude/skills/commands/review/SKILL.md",
           "sync",
         ),
       ]),
     ).toEqual([
       "import     /repo/.agents/AGENTS.md",
-      "sync       /home/.claude/commands/review.md",
+      "sync       /home/.claude/skills/commands/review/SKILL.md",
     ]);
   });
 

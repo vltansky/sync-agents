@@ -108,23 +108,28 @@ describe("getBootstrapResolution", () => {
 
     const cursor = makeAsset(
       "cursor",
-      "commands",
-      "commands/interview.md",
+      "skills",
+      "skills/commands/interview/SKILL.md",
       withCursorKeys,
     );
     cursor.modifiedAt = new Date("2026-03-10");
     const claude = makeAsset(
       "claude",
-      "commands",
-      "commands/interview.md",
+      "skills",
+      "skills/commands/interview/SKILL.md",
       withClaudeKeys,
     );
     claude.modifiedAt = new Date("2026-03-08");
-    const codex = makeAsset("codex", "commands", "commands/interview.md", base);
+    const codex = makeAsset(
+      "codex",
+      "skills",
+      "skills/commands/interview/SKILL.md",
+      base,
+    );
     codex.modifiedAt = new Date("2026-03-05");
 
     const result = getBootstrapResolution({
-      canonicalPath: "commands/interview.md",
+      canonicalPath: "skills/commands/interview/SKILL.md",
       candidates: [cursor, claude, codex],
     });
 

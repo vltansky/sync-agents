@@ -18,15 +18,8 @@ export function buildClientDefinitions(
       root: path.join(HOME, ".codex"),
       assets: [
         { type: "agents", patterns: ["AGENTS.md"] },
-        {
-          type: "commands",
-          patterns: ["prompts/**/*.md", "skills/commands/**/SKILL.md"],
-        },
         { type: "rules", patterns: ["rules/**/*.rules"] },
-        {
-          type: "skills",
-          patterns: ["skills/**/SKILL.md", "!skills/commands/**/SKILL.md"],
-        },
+        { type: "skills", patterns: ["skills/**/SKILL.md"] },
         { type: "mcp", patterns: [], files: ["config.toml"] },
       ],
     },
@@ -36,7 +29,6 @@ export function buildClientDefinitions(
       root: path.join(HOME, ".claude"),
       assets: [
         { type: "agents", patterns: ["CLAUDE.md"] },
-        { type: "commands", patterns: ["commands/**/*.md"] },
         { type: "rules", patterns: [] },
         { type: "skills", patterns: ["skills/**/SKILL.md"] },
         {
@@ -53,7 +45,6 @@ export function buildClientDefinitions(
       root: path.join(HOME, ".cursor"),
       assets: [
         { type: "agents", patterns: ["AGENTS.md"] },
-        { type: "commands", patterns: ["commands/**/*.md"] },
         { type: "rules", patterns: ["rules/**/*.md", "rules/**/*.mdc"] },
         { type: "skills", patterns: [] },
         { type: "mcp", patterns: [], files: ["mcp.json"] },
@@ -65,7 +56,6 @@ export function buildClientDefinitions(
       root: resolveOpenCodeRoot(),
       assets: [
         { type: "agents", patterns: ["AGENTS.md"] },
-        { type: "commands", patterns: ["command/**/*.md"] },
         { type: "rules", patterns: [] },
         { type: "skills", patterns: ["skill/**/SKILL.md"] },
         { type: "mcp", patterns: [], files: ["opencode.json"] },

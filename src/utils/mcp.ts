@@ -234,7 +234,10 @@ export function parseMcpConfig(
     }
 
     return config;
-  } catch {
+  } catch (err) {
+    console.warn(
+      `Warning: failed to parse MCP config (${format}): ${(err as Error).message ?? err}`,
+    );
     return null;
   }
 }
@@ -427,12 +430,28 @@ function parseTomlValue(value: string): unknown {
     return value.slice(1, -1);
   }
 
-  // Array
+  // Array — tokenize respecting quoted strings to avoid splitting on commas
+  // inside values like "key=a,b,c"
   if (value.startsWith("[") && value.endsWith("]")) {
-    const items = value
-      .slice(1, -1)
-      .split(",")
-      .map((v) => parseTomlValue(v));
+    const inner = value.slice(1, -1);
+    const items: unknown[] = [];
+    let current = "";
+    let inQuote = false;
+    for (let i = 0; i < inner.length; i++) {
+      const ch = inner[i];
+      if (ch === '"') {
+        inQuote = !inQuote;
+        current += ch;
+      } else if (ch === "," && !inQuote) {
+        items.push(parseTomlValue(current));
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    if (current.trim()) {
+      items.push(parseTomlValue(current));
+    }
     return items;
   }
 
@@ -477,7 +496,9 @@ function serializeToml(config: McpConfig, _indent: number): string {
 
 function serializeTomlValue(value: unknown): string {
   if (typeof value === "string") {
-    return `"${value}"`;
+    // Escape backslashes and double quotes to produce valid TOML strings
+    const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `"${escaped}"`;
   }
   if (Array.isArray(value)) {
     return `[${value.map(serializeTomlValue).join(", ")}]`;
@@ -595,7 +616,8 @@ function serializeYaml(config: McpConfig, indent: number): string {
  */
 function serializeYamlValue(value: unknown): string {
   if (typeof value === "string") {
-    return `"${value}"`;
+    const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `"${escaped}"`;
   }
   if (Array.isArray(value)) {
     return `[${value.map((v) => `"${v}"`).join(", ")}]`;

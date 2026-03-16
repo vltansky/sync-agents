@@ -21,7 +21,13 @@ export async function fileExists(filePath: string): Promise<boolean> {
 
 export async function readFileSafe(filePath: string): Promise<string | null> {
   try {
-    return await fs.readFile(filePath, "utf8");
+    const content = await fs.readFile(filePath, "utf8");
+    // Strip UTF-8 BOM — prevents frontmatter detection failures and
+    // double-frontmatter injection on files saved by Windows editors.
+    if (content.charCodeAt(0) === 0xfeff) {
+      return content.slice(1);
+    }
+    return content;
   } catch {
     return null;
   }
@@ -31,6 +37,7 @@ export async function writeFileSafe(
   filePath: string,
   contents: string,
 ): Promise<void> {
+  await breakParentDirSymlinks(filePath);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   // Remove existing symlink to avoid ELOOP and prevent writing through to
   // the symlink target (which would modify a different client's file).
@@ -43,6 +50,30 @@ export async function writeFileSafe(
     // File doesn't exist — nothing to unlink
   }
   await fs.writeFile(filePath, contents, "utf8");
+}
+
+/**
+ * Break directory symlinks in the ancestor chain of filePath to prevent
+ * writing through them into a different location (e.g. a client dir symlink
+ * pointing to canonical would cause writes to modify canonical files).
+ * Walks upward from the immediate parent, stopping at HOME or filesystem root.
+ */
+async function breakParentDirSymlinks(filePath: string): Promise<void> {
+  const home = process.env.HOME ?? "/";
+  let dir = path.dirname(filePath);
+
+  while (dir !== home && dir !== "/" && dir !== path.dirname(dir)) {
+    try {
+      const stats = await fs.lstat(dir);
+      if (stats.isSymbolicLink()) {
+        await fs.unlink(dir);
+        await fs.mkdir(dir, { recursive: true });
+      }
+    } catch {
+      // Dir doesn't exist yet — will be created by mkdir later
+    }
+    dir = path.dirname(dir);
+  }
 }
 
 export function hashContent(content: string): string {

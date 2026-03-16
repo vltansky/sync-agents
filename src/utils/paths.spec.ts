@@ -10,6 +10,7 @@ import {
   getTargetMcpFilename,
   canonicalizeMcpPath,
   denormalizeMcpPath,
+  flattenSkillPath,
 } from "./paths.js";
 
 const mockDefs: ClientDefinition[] = [
@@ -37,7 +38,6 @@ const mockDefs: ClientDefinition[] = [
     root: "/home/.config/opencode",
     assets: [
       { type: "agents", patterns: ["AGENTS.md"] },
-      { type: "commands", patterns: ["command/**/*.md"] },
       { type: "skills", patterns: ["skill/**/SKILL.md"] },
       { type: "mcp", patterns: [], files: ["opencode.json"] },
     ],
@@ -81,44 +81,6 @@ describe("path utilities", () => {
         "AGENTS.md",
       );
     });
-
-    it("should convert codex prompts/ to canonical commands/", () => {
-      expect(
-        canonicalizeRelativePath("codex", "commands", "prompts/test.md"),
-      ).toBe("commands/test.md");
-    });
-
-    it("should preserve nested folder structure when converting codex prompts/ to commands/", () => {
-      expect(
-        canonicalizeRelativePath(
-          "codex",
-          "commands",
-          "prompts/octocode/research.md",
-        ),
-      ).toBe("commands/octocode/research.md");
-    });
-
-    it("should preserve deeply nested folder structure for codex prompts", () => {
-      expect(
-        canonicalizeRelativePath("codex", "commands", "prompts/a/b/c/deep.md"),
-      ).toBe("commands/a/b/c/deep.md");
-    });
-
-    it("should convert Codex command skills back to canonical commands", () => {
-      expect(
-        canonicalizeRelativePath(
-          "codex",
-          "commands",
-          "skills/commands/octocode/research/SKILL.md",
-        ),
-      ).toBe("commands/octocode/research.md");
-    });
-
-    it("should not modify paths for other clients", () => {
-      expect(
-        canonicalizeRelativePath("claude", "commands", "commands/test.md"),
-      ).toBe("commands/test.md");
-    });
   });
 
   describe("denormalizeRelativePath", () => {
@@ -148,74 +110,6 @@ describe("path utilities", () => {
   });
 
   describe("remapRelativePathForTarget", () => {
-    it("should convert commands to Codex command skills", () => {
-      const asset: AssetContent = {
-        client: "claude",
-        type: "commands",
-        path: "/claude/commands/test.md",
-        relativePath: "commands/test.md",
-        canonicalPath: "commands/test.md",
-        name: "test",
-        content: "content",
-        hash: "hash",
-      };
-      expect(
-        remapRelativePathForTarget(asset, "codex", "commands/test.md"),
-      ).toBe("skills/commands/test/SKILL.md");
-    });
-
-    it("should preserve nested folder structure when converting commands to Codex command skills", () => {
-      const asset: AssetContent = {
-        client: "cursor",
-        type: "commands",
-        path: "/cursor/commands/octocode/research.md",
-        relativePath: "commands/octocode/research.md",
-        canonicalPath: "commands/octocode/research.md",
-        name: "octocode/research",
-        content: "content",
-        hash: "hash",
-      };
-      expect(
-        remapRelativePathForTarget(
-          asset,
-          "codex",
-          "commands/octocode/research.md",
-        ),
-      ).toBe("skills/commands/octocode/research/SKILL.md");
-    });
-
-    it("should preserve deeply nested folder structure for codex", () => {
-      const asset: AssetContent = {
-        client: "cursor",
-        type: "commands",
-        path: "/cursor/commands/a/b/c/deep.md",
-        relativePath: "commands/a/b/c/deep.md",
-        canonicalPath: "commands/a/b/c/deep.md",
-        name: "a/b/c/deep",
-        content: "content",
-        hash: "hash",
-      };
-      expect(
-        remapRelativePathForTarget(asset, "codex", "commands/a/b/c/deep.md"),
-      ).toBe("skills/commands/a/b/c/deep/SKILL.md");
-    });
-
-    it("should preserve commands path for non-codex clients", () => {
-      const asset: AssetContent = {
-        client: "claude",
-        type: "commands",
-        path: "/claude/commands/test.md",
-        relativePath: "commands/test.md",
-        canonicalPath: "commands/test.md",
-        name: "test",
-        content: "content",
-        hash: "hash",
-      };
-      expect(
-        remapRelativePathForTarget(asset, "claude", "commands/test.md"),
-      ).toBe("commands/test.md");
-    });
-
     it("should remap MCP config.toml to mcp.json for cursor", () => {
       const asset: AssetContent = {
         client: "codex",
@@ -333,22 +227,6 @@ describe("path utilities", () => {
 
   describe("OpenCode singular directory mapping", () => {
     describe("canonicalizeRelativePath", () => {
-      it("should convert opencode command/ to canonical commands/", () => {
-        expect(
-          canonicalizeRelativePath("opencode", "commands", "command/test.md"),
-        ).toBe("commands/test.md");
-      });
-
-      it("should preserve nested structure when converting command/ to commands/", () => {
-        expect(
-          canonicalizeRelativePath(
-            "opencode",
-            "commands",
-            "command/sub/nested.md",
-          ),
-        ).toBe("commands/sub/nested.md");
-      });
-
       it("should convert opencode skill/ to canonical skills/", () => {
         expect(
           canonicalizeRelativePath(
@@ -361,42 +239,6 @@ describe("path utilities", () => {
     });
 
     describe("remapRelativePathForTarget", () => {
-      it("should convert commands/ to command/ for opencode", () => {
-        const asset: AssetContent = {
-          client: "cursor",
-          type: "commands",
-          path: "/cursor/commands/test.md",
-          relativePath: "commands/test.md",
-          canonicalPath: "commands/test.md",
-          name: "test",
-          content: "content",
-          hash: "hash",
-        };
-        expect(
-          remapRelativePathForTarget(asset, "opencode", "commands/test.md"),
-        ).toBe("command/test.md");
-      });
-
-      it("should preserve nested structure when converting to opencode command/", () => {
-        const asset: AssetContent = {
-          client: "cursor",
-          type: "commands",
-          path: "/cursor/commands/sub/nested.md",
-          relativePath: "commands/sub/nested.md",
-          canonicalPath: "commands/sub/nested.md",
-          name: "sub/nested",
-          content: "content",
-          hash: "hash",
-        };
-        expect(
-          remapRelativePathForTarget(
-            asset,
-            "opencode",
-            "commands/sub/nested.md",
-          ),
-        ).toBe("command/sub/nested.md");
-      });
-
       it("should convert skills/ to skill/ for opencode", () => {
         const asset: AssetContent = {
           client: "cursor",
@@ -416,6 +258,76 @@ describe("path utilities", () => {
           ),
         ).toBe("skill/myskill/SKILL.md");
       });
+    });
+  });
+
+  describe("flattenSkillPath", () => {
+    it("should not flatten single-level skill paths", () => {
+      expect(flattenSkillPath("skills/review/SKILL.md")).toBe(
+        "skills/review/SKILL.md",
+      );
+    });
+
+    it("should flatten two-level nested skill paths", () => {
+      expect(flattenSkillPath("skills/commands/review/SKILL.md")).toBe(
+        "skills/commands-review/SKILL.md",
+      );
+    });
+
+    it("should flatten deeply nested skill paths", () => {
+      expect(
+        flattenSkillPath("skills/builder/steps/initialize-component/SKILL.md"),
+      ).toBe("skills/builder-steps-initialize-component/SKILL.md");
+    });
+
+    it("should handle skill/ prefix (opencode)", () => {
+      expect(flattenSkillPath("skill/builder/steps/init/SKILL.md")).toBe(
+        "skill/builder-steps-init/SKILL.md",
+      );
+    });
+
+    it("should not modify non-skill paths", () => {
+      expect(flattenSkillPath("rules/test.md")).toBe("rules/test.md");
+    });
+
+    it("should flatten nested skills during remapRelativePathForTarget", () => {
+      const asset: AssetContent = {
+        client: "canonical",
+        type: "skills",
+        path: "/agents/skills/builder/steps/init/SKILL.md",
+        relativePath: "skills/builder/steps/init/SKILL.md",
+        canonicalPath: "skills/builder/steps/init/SKILL.md",
+        name: "init",
+        content: "content",
+        hash: "hash",
+      };
+      expect(
+        remapRelativePathForTarget(
+          asset,
+          "codex",
+          "skills/builder/steps/init/SKILL.md",
+        ),
+      ).toBe("skills/builder-steps-init/SKILL.md");
+    });
+
+    it("should flatten AND remap to skill/ for opencode", () => {
+      const asset: AssetContent = {
+        client: "canonical",
+        type: "skills",
+        path: "/agents/skills/builder/steps/init/SKILL.md",
+        relativePath: "skills/builder/steps/init/SKILL.md",
+        canonicalPath: "skills/builder/steps/init/SKILL.md",
+        name: "init",
+        content: "content",
+        hash: "hash",
+      };
+      expect(
+        remapRelativePathForTarget(
+          asset,
+          "opencode",
+          "skills/builder/steps/init/SKILL.md",
+        ),
+      ).toBe("skill/builder-steps-init/SKILL.md");
     });
   });
 });

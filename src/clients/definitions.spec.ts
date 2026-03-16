@@ -21,14 +21,12 @@ describe("buildClientDefinitions", () => {
       expect(codex?.root).toBe(path.join(HOME, ".codex"));
     });
 
-    it("should support both legacy prompts and migrated command skills for Codex", () => {
+    it("should have skills including command skills", () => {
       const defs = buildClientDefinitions(projectRoot);
       const codex = defs.find((d) => d.name === "codex");
-      const commands = codex?.assets.find((a) => a.type === "commands");
       const skills = codex?.assets.find((a) => a.type === "skills");
-      expect(commands?.patterns).toContain("prompts/**/*.md");
-      expect(commands?.patterns).toContain("skills/commands/**/SKILL.md");
-      expect(skills?.patterns).toContain("!skills/commands/**/SKILL.md");
+      expect(skills?.patterns).toContain("skills/**/SKILL.md");
+      expect(codex?.assets.find((a) => a.type === "commands")).toBeUndefined();
     });
 
     it("should use config.toml for MCP", () => {
@@ -53,11 +51,10 @@ describe("buildClientDefinitions", () => {
       expect(agents?.patterns).toContain("CLAUDE.md");
     });
 
-    it("should have commands in commands/ directory", () => {
+    it("should not have commands (migrated to skills)", () => {
       const defs = buildClientDefinitions(projectRoot);
       const claude = defs.find((d) => d.name === "claude");
-      const commands = claude?.assets.find((a) => a.type === "commands");
-      expect(commands?.patterns).toContain("commands/**/*.md");
+      expect(claude?.assets.find((a) => a.type === "commands")).toBeUndefined();
     });
 
     it("should NOT have rules directory (rules are in CLAUDE.md)", () => {
@@ -122,12 +119,12 @@ describe("buildClientDefinitions", () => {
       expect(agents?.patterns).toContain("AGENTS.md");
     });
 
-    it("should use singular command/ directory (not commands/)", () => {
-      // See: https://opencode.ai/docs/commands/
+    it("should not have commands (migrated to skills)", () => {
       const defs = buildClientDefinitions(projectRoot);
       const opencode = defs.find((d) => d.name === "opencode");
-      const commands = opencode?.assets.find((a) => a.type === "commands");
-      expect(commands?.patterns).toContain("command/**/*.md");
+      expect(
+        opencode?.assets.find((a) => a.type === "commands"),
+      ).toBeUndefined();
     });
 
     it("should NOT have rules directory (rules are in AGENTS.md)", () => {

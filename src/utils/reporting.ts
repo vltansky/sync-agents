@@ -6,10 +6,9 @@ import type {
   SyncPlanEntry,
 } from "../types/index.js";
 
-const TYPE_ORDER: ManagedAssetType[] = ["agents", "commands", "skills", "mcp"];
+const TYPE_ORDER: ManagedAssetType[] = ["agents", "skills", "mcp"];
 const TYPE_LABELS: Record<ManagedAssetType, string> = {
   agents: "AGENTS.md",
-  commands: "commands",
   skills: "skills",
   mcp: "mcp",
 };
@@ -27,7 +26,7 @@ interface SyncPreflightInput {
 export function buildSyncPreflightLines(input: SyncPreflightInput): string[] {
   const types = input.types?.length
     ? input.types.join(", ")
-    : "agents, commands, skills, mcp";
+    : "agents, skills, mcp";
   const targets = input.targets.length > 0 ? input.targets.join(", ") : "none";
 
   return [

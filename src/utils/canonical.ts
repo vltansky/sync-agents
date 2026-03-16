@@ -228,6 +228,9 @@ export function buildFanoutPlan(
   options: SyncCommandOptions,
 ): SyncPlanEntry[] {
   const plan: SyncPlanEntry[] = [];
+  // Track target paths per client to detect flattening collisions
+  // (e.g. skills/a-b/c/ and skills/a/b-c/ both flatten to skills/a-b-c/)
+  const targetPathOwners = new Map<string, string>();
 
   for (const asset of canonicalAssets) {
     for (const def of defs) {
@@ -249,6 +252,15 @@ export function buildFanoutPlan(
       const targetPath = buildTargetAbsolutePath(def.root, targetRelative);
 
       if (targetPath !== asset.path) {
+        const key = `${def.name}::${targetPath}`;
+        const existingOwner = targetPathOwners.get(key);
+        if (existingOwner && existingOwner !== asset.relativePath) {
+          console.warn(
+            `Warning: skill path collision — "${asset.relativePath}" and "${existingOwner}" both map to "${targetRelative}" for ${def.name}`,
+          );
+        }
+        targetPathOwners.set(key, asset.relativePath);
+
         plan.push({
           asset,
           targetClient: def.name,

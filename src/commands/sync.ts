@@ -132,8 +132,14 @@ export async function runSyncCommand(
     });
 
     if (applyResult.failed > 0) {
-      await restoreSnapshot(snapshot.id);
-      p.cancel(`Sync failed -- restored snapshot ${snapshot.id}`);
+      try {
+        await restoreSnapshot(snapshot.id);
+        p.cancel(`Sync failed -- restored snapshot ${snapshot.id}`);
+      } catch (restoreErr) {
+        p.cancel(
+          `Sync failed AND snapshot restore failed. Manual recovery: ~/.link-agents/snapshots/${snapshot.id}\n  ${restoreErr}`,
+        );
+      }
       process.exit(1);
     }
 
@@ -154,8 +160,14 @@ export async function runSyncCommand(
 
   if (applyResult.failed > 0) {
     spin.stop("Sync failed");
-    await restoreSnapshot(snapshot.id);
-    p.cancel(`Sync failed -- restored snapshot ${snapshot.id}`);
+    try {
+      await restoreSnapshot(snapshot.id);
+      p.cancel(`Sync failed -- restored snapshot ${snapshot.id}`);
+    } catch (restoreErr) {
+      p.cancel(
+        `Sync failed AND snapshot restore failed. Manual recovery: ~/.link-agents/snapshots/${snapshot.id}\n  ${restoreErr}`,
+      );
+    }
     process.exit(1);
   }
 
@@ -244,7 +256,9 @@ async function collectGeneratedStateEntries(
       const stats = await fs.lstat(entry.targetPath);
       if (stats.isSymbolicLink()) mode = "symlink";
     } catch {
-      continue;
+      // lstat failed — file may have been cleaned up. Still record the entry
+      // with "copy" mode so it appears in canonical-state.json and can be
+      // pruned later if needed, rather than silently dropping it.
     }
     const sourceContent = await readFileSafe(entry.asset.path);
     generated.push({

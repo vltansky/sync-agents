@@ -324,7 +324,10 @@ describe("runSyncCommand e2e", () => {
     await fs.writeFile(canonicalPath, "canonical old", "utf8");
     await fs.writeFile(claudePath, "claude newest", "utf8");
     await fs.writeFile(codexPath, "codex old", "utf8");
-    await fs.chmod(codexPath, 0o400);
+    // Make the codex directory read-only so writes into it fail.
+    // chmod on the file itself doesn't prevent symlink replacement
+    // (file removal depends on parent dir permissions, not the file's).
+    await fs.chmod(codexDir, 0o555);
     await setMtime(canonicalPath, new Date("2026-01-01T00:00:00Z"));
     await setMtime(claudePath, new Date("2026-02-01T00:00:00Z"));
 
@@ -349,7 +352,7 @@ describe("runSyncCommand e2e", () => {
       ).rejects.toThrow(/process\.exit:1/);
     } finally {
       exitSpy.mockRestore();
-      await fs.chmod(codexPath, 0o644).catch(() => undefined);
+      await fs.chmod(codexDir, 0o755).catch(() => undefined);
     }
 
     expect(await fs.readFile(canonicalPath, "utf8")).toBe("canonical old");

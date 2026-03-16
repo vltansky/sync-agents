@@ -189,12 +189,12 @@ tools: Read, Edit
 ---
 
 # Command`;
-    const result = transformContentForClient(content, "opencode", "commands");
+    const result = transformContentForClient(content, "opencode", "skills");
     expect(result).toBe(content);
   });
 
-  describe("command frontmatter stripping", () => {
-    it("strips Cursor-specific keys when syncing commands to Claude", () => {
+  describe("skill frontmatter stripping", () => {
+    it("strips Cursor-specific keys when syncing skills to Claude", () => {
       const content = `---
 description: Test command
 argument-hint: [plan]
@@ -202,7 +202,7 @@ model: opus
 ---
 
 # Test Command`;
-      const result = transformContentForClient(content, "claude", "commands");
+      const result = transformContentForClient(content, "claude", "skills");
       expect(result).toContain("description: Test command");
       expect(result).not.toContain("argument-hint");
       expect(result).not.toContain("model:");
@@ -216,7 +216,7 @@ argument-hint: [file]
 ---
 
 # Test`;
-      const result = transformContentForClient(content, "codex", "commands");
+      const result = transformContentForClient(content, "codex", "skills");
       expect(result).toContain("description: Test");
       expect(result).not.toContain("argument-hint");
     });
@@ -229,7 +229,7 @@ model: opus
 ---
 
 # Test`;
-      const result = transformContentForClient(content, "cursor", "commands");
+      const result = transformContentForClient(content, "cursor", "skills");
       expect(result).toBe(content);
     });
 
@@ -241,7 +241,7 @@ model: opus
 ---
 
 # Test`;
-      const result = transformContentForClient(content, "opencode", "commands");
+      const result = transformContentForClient(content, "opencode", "skills");
       expect(result).toBe(content);
     });
 
@@ -252,7 +252,7 @@ allowed_tools: read,write
 ---
 
 # Test`;
-      const result = transformContentForClient(content, "cursor", "commands");
+      const result = transformContentForClient(content, "cursor", "skills");
       expect(result).toContain("description: Test");
       expect(result).not.toContain("allowed_tools");
     });
@@ -273,7 +273,7 @@ Content here.
 ## Section 2
 
 More content.`;
-      const result = transformContentForClient(content, "claude", "commands");
+      const result = transformContentForClient(content, "claude", "skills");
       expect(result).toContain("# Main Title");
       expect(result).toContain("## Section 1");
       expect(result).toContain("Content here.");
@@ -284,7 +284,7 @@ More content.`;
       const content = `# No frontmatter
 
 Just a command.`;
-      const result = transformContentForClient(content, "claude", "commands");
+      const result = transformContentForClient(content, "claude", "skills");
       expect(result).toBe(content);
     });
   });
