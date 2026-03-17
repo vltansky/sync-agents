@@ -128,6 +128,8 @@ export interface AppliedEntry {
   assetType: string;
   writeMode: "symlink" | "copy";
   mcpServerCount?: number;
+  mcpServersAdded?: number;
+  mcpServersUnchanged?: number;
 }
 
 export interface ScanResult {

@@ -28,6 +28,20 @@ function countMcpServersInContent(content: string): number {
     return 0;
   }
 }
+
+function computeMcpMergeStats(
+  existingContent: string | null,
+  newContent: string,
+): { total: number; added: number; unchanged: number } {
+  const newCount = countMcpServersInContent(newContent);
+  if (!existingContent) {
+    return { total: newCount, added: newCount, unchanged: 0 };
+  }
+  const oldCount = countMcpServersInContent(existingContent);
+  // Simple heuristic: if new > old, the diff is "added"; rest is "unchanged"
+  const added = Math.max(0, newCount - oldCount);
+  return { total: newCount, added, unchanged: newCount - added };
+}
 const MAX_BACKUPS = 10;
 
 export interface ApplyResult {
@@ -148,12 +162,20 @@ export async function applyPlan(
           ),
         );
       }
+      const mcpStats =
+        entry.asset.type === "mcp"
+          ? computeMcpMergeStats(existingTargetContent, transformedContent)
+          : undefined;
       result.entries.push({
         targetClient: entry.targetClient,
         assetType: entry.asset.type,
         writeMode: symlinkEligible ? "symlink" : "copy",
-        ...(entry.asset.type === "mcp"
-          ? { mcpServerCount: countMcpServersInContent(entry.asset.content) }
+        ...(mcpStats
+          ? {
+              mcpServerCount: mcpStats.total,
+              mcpServersAdded: mcpStats.added,
+              mcpServersUnchanged: mcpStats.unchanged,
+            }
           : {}),
       });
       result.applied++;
@@ -206,12 +228,20 @@ export async function applyPlan(
       }
 
       appliedChanges.push({ targetPath: entry.targetPath, backupPath });
+      const mcpStats =
+        entry.asset.type === "mcp"
+          ? computeMcpMergeStats(existingTargetContent, transformedContent)
+          : undefined;
       result.entries.push({
         targetClient: entry.targetClient,
         assetType: entry.asset.type,
         writeMode: symlinkEligible ? "symlink" : "copy",
-        ...(entry.asset.type === "mcp"
-          ? { mcpServerCount: countMcpServersInContent(entry.asset.content) }
+        ...(mcpStats
+          ? {
+              mcpServerCount: mcpStats.total,
+              mcpServersAdded: mcpStats.added,
+              mcpServersUnchanged: mcpStats.unchanged,
+            }
           : {}),
       });
       result.applied++;
@@ -232,6 +262,13 @@ async function canWriteAsSymlink(
   entry: SyncPlanEntry,
   transformedContent: string,
 ): Promise<boolean> {
+  // Can't symlink a file to itself — would create a self-referencing loop.
+  // This happens for collection plan entries where source and target are both
+  // the canonical path (e.g. ~/.agents/AGENTS.md → ~/.agents/AGENTS.md).
+  if (path.resolve(entry.asset.path) === path.resolve(entry.targetPath)) {
+    return false;
+  }
+
   // Don't symlink if source is itself a symlink — prevents circular chains
   // (e.g. canonical → opencode → canonical)
   try {

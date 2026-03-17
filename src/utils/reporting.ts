@@ -135,6 +135,12 @@ function isManagedAssetType(type: string): type is ManagedAssetType {
   return TYPE_ORDER.includes(type as ManagedAssetType);
 }
 
+/**
+ * Build sync tree lines showing what was done per client in domain terms.
+ * Example output:
+ *   claude     AGENTS.md linked, 57 skills (39 linked, 18 copied), MCP: 13 servers (7 added, 6 unchanged)
+ *   codex      AGENTS.md linked, 96 skills linked
+ */
 export function buildSyncTreeLines(
   entries: AppliedEntry[],
   clientRoots: Map<string, string>,
@@ -153,53 +159,71 @@ export function buildSyncTreeLines(
     ...[...byClient.keys()].filter((k) => k !== "canonical").sort(),
   ].filter((k) => byClient.has(k));
 
-  const roots = clientOrder.map((c) => abbreviateHome(clientRoots.get(c) ?? c));
-  const maxRootLen = Math.max(...roots.map((r) => r.length + 1)); // +1 for trailing /
-  const padWidth = Math.max(maxRootLen + 2, 24);
+  const labels = clientOrder.map((c) => {
+    const root = clientRoots.get(c);
+    return root ? abbreviateHome(root) : c;
+  });
+  const padWidth = Math.max(...labels.map((l) => l.length + 2), 16);
 
   const lines: string[] = [];
 
   for (let i = 0; i < clientOrder.length; i++) {
     const client = clientOrder[i];
     const clientEntries = byClient.get(client)!;
-    const rootDisplay = roots[i] + "/";
+    const label = labels[i];
 
-    const typeCounts = new Map<ManagedAssetType, number>();
-    for (const entry of clientEntries) {
-      if (!isManagedAssetType(entry.assetType)) continue;
+    const parts: string[] = [];
 
-      if (entry.assetType === "mcp" && entry.mcpServerCount) {
-        typeCounts.set("mcp", entry.mcpServerCount);
-      } else {
-        typeCounts.set(
-          entry.assetType,
-          (typeCounts.get(entry.assetType) ?? 0) + 1,
-        );
-      }
+    // AGENTS.md
+    const agentsEntries = clientEntries.filter((e) => e.assetType === "agents");
+    if (agentsEntries.length > 0) {
+      const mode =
+        agentsEntries[0].writeMode === "symlink" ? "linked" : "copied";
+      parts.push(
+        client === "canonical" ? "AGENTS.md updated" : `AGENTS.md ${mode}`,
+      );
     }
 
-    const typeStr = TYPE_ORDER.filter((t) => (typeCounts.get(t) ?? 0) > 0)
-      .map((t) => {
-        if (t === "agents") return TYPE_LABELS[t];
-        return `${typeCounts.get(t)} ${TYPE_LABELS[t]}`;
-      })
-      .join(", ");
-
-    let modeStr = "";
-    if (client !== "canonical") {
-      const linked = clientEntries.filter(
+    // Skills
+    const skillEntries = clientEntries.filter((e) => e.assetType === "skills");
+    if (skillEntries.length > 0) {
+      const linked = skillEntries.filter(
         (e) => e.writeMode === "symlink",
       ).length;
-      const copied = clientEntries.filter((e) => e.writeMode === "copy").length;
-      const parts: string[] = [];
-      if (linked > 0) parts.push(`${linked} linked`);
-      if (copied > 0) parts.push(`${copied} copied`);
-      if (parts.length > 0) {
-        modeStr = `  (${parts.join(", ")})`;
+      const copied = skillEntries.filter((e) => e.writeMode === "copy").length;
+      if (client === "canonical") {
+        parts.push(`${skillEntries.length} skills updated`);
+      } else if (linked > 0 && copied > 0) {
+        parts.push(
+          `${skillEntries.length} skills (${linked} linked, ${copied} copied)`,
+        );
+      } else if (linked > 0) {
+        parts.push(`${skillEntries.length} skills linked`);
+      } else {
+        parts.push(`${skillEntries.length} skills copied`);
       }
     }
 
-    lines.push(`${rootDisplay.padEnd(padWidth)}${typeStr}${modeStr}`);
+    // MCP
+    const mcpEntries = clientEntries.filter((e) => e.assetType === "mcp");
+    if (mcpEntries.length > 0) {
+      const mcp = mcpEntries[0];
+      const total = mcp.mcpServerCount ?? 0;
+      const added = mcp.mcpServersAdded ?? 0;
+      const unchanged = mcp.mcpServersUnchanged ?? 0;
+
+      if (client === "canonical") {
+        parts.push(`${total} MCP servers collected`);
+      } else if (added > 0 && unchanged > 0) {
+        parts.push(`MCP: ${added} added, ${unchanged} unchanged`);
+      } else if (added > 0) {
+        parts.push(`MCP: ${added} servers added`);
+      } else {
+        parts.push(`MCP: ${total} servers merged`);
+      }
+    }
+
+    lines.push(`${label.padEnd(padWidth)}${parts.join(", ")}`);
   }
 
   return lines;

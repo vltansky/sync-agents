@@ -96,8 +96,6 @@ export async function runSyncCommand(
     return;
   }
 
-  p.note(buildSyncPlanSummaryLines(plan).join("\n"), "Plan");
-
   const clientRoots = buildClientRootsMap(projectRoot, targetDefs);
 
   if (options.dryRun) {
@@ -173,7 +171,9 @@ export async function runSyncCommand(
 
   spin.stop(formatResultLine(applyResult));
   await writeCanonicalState(await collectGeneratedStateEntries(fanoutPlan));
-  printSyncTree(applyResult, clientRoots);
+  if (applyResult.applied > 0) {
+    printSyncTree(applyResult, clientRoots);
+  }
   printErrors(applyResult);
   p.outro("Sync complete");
 }
@@ -202,15 +202,16 @@ function buildCanonicalCollectionPlan(
 }
 
 function formatResultLine(result: ApplyResult, dryRun?: boolean): string {
+  if (result.applied === 0 && result.failed === 0) {
+    return dryRun ? "Dry run: already up to date" : "Already up to date";
+  }
   const parts: string[] = [];
   if (result.applied > 0) parts.push(`${result.applied} applied`);
-  if (result.skipped > 0) parts.push(`${result.skipped} skipped`);
+  if (result.skipped > 0) parts.push(`${result.skipped} unchanged`);
   if (result.failed > 0) parts.push(`${result.failed} failed`);
   if (result.rolledBack) parts.push("rolled back");
   const prefix = dryRun ? "Dry run: " : "";
-  return parts.length > 0
-    ? `${prefix}${parts.join(", ")}`
-    : `${prefix}no changes`;
+  return `${prefix}${parts.join(", ")}`;
 }
 
 function printErrors(result: ApplyResult): void {
