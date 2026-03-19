@@ -1,6 +1,6 @@
 {
   "name": "link-agents",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Synchronize agent guidance (AGENTS, commands, rules, skills, MCP configs) across AI coding assistants.",
   "type": "module",
   "bin": {

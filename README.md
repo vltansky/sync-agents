@@ -1,93 +1,138 @@
 # link-agents
 
-Synchronize canonical `.agents` assets across AI coding assistants.
+One command to keep your AI coding assistants in sync.
+
+[Installation](#installation) | [Quick Start](#quick-start) | [Commands](#commands) | [Supported Clients](#supported-clients) | [How It Works](#how-it-works)
+
+## Why?
+
+Different AI coding tools — Claude Code, Codex, Cursor, OpenCode — each need their own config files. Keeping `AGENTS.md`, skills, and MCP server definitions consistent across all of them means duplicated files, manual updates, and inevitable drift.
+
+`link-agents` fixes this with a single canonical source (`~/.agents/`) that automatically fans out to every client.
+
+## Installation
+
+```bash
+npm install -g link-agents
+```
+
+Or run directly:
+
+```bash
+npx link-agents sync
+```
+
+Requires Node.js 18+.
 
 ## Quick Start
 
 ```bash
-npx link-agents sync
+# Preview what would change
+link-agents sync --dry-run
+
+# Sync everything (will ask symlink vs copy)
+link-agents sync
+
+# Sync with symlinks (no prompt)
+link-agents sync --link
 ```
 
-This command:
+Example output:
 
-1. Reads canonical assets from `.agents/`
-2. Bootstraps missing canonical assets from legacy client files when possible
-3. Warns about unsupported legacy inputs like `~/.cursor/rules/*`
-4. Fans out canonical assets to client-specific locations
-5. Creates a restore point before mutating targets
-
-## Canonical Layout
-
-```text
-.agents/
-  AGENTS.md
-  commands/
-  skills/
-  mcp.json
 ```
+  Configuration
+  Mode:        apply
+  Write mode:  symlink
+  Root:        ~/.agents
+  Targets:     codex, claude, cursor, opencode
 
-`link-agents` treats `.agents/*` as the source of truth once those files exist.
+  Sync tree
+  ~/.agents       13 MCP servers collected
+  ~/.codex        AGENTS.md linked, 96 skills linked, MCP: 13 servers merged
+  ~/.claude       AGENTS.md linked, 43 skills linked, MCP: 13 servers merged
+  ~/.cursor       AGENTS.md linked, MCP: 13 servers merged
 
-## Commands
-
-### `sync`
-
-Bootstrap canonical assets if needed, then sync them to supported clients.
-
-```bash
-npx link-agents sync
-npx link-agents sync --dry-run
-npx link-agents sync --link
-npx link-agents sync --copy
-npx link-agents sync --separate-claude-md
-npx link-agents sync --bootstrap-source claude
-npx link-agents sync --clients claude,cursor
-npx link-agents sync --types agents,mcp
-```
-
-Notes:
-
-- `--link` prefers symlinks when target bytes can exactly reuse canonical bytes.
-- `--copy` always writes independent copies.
-- If neither flag is provided and the terminal is interactive, `sync` asks which write mode to use.
-- `--separate-claude-md` leaves `CLAUDE.md` unmanaged for that run.
-- If bootstrap is ambiguous, interactive sync asks which client to use; non-interactive sync requires `--bootstrap-source`.
-
-### `doctor`
-
-Inspect canonical sync health, ignored legacy inputs, broken generated targets, and canonical assets eligible for bootstrap.
-
-```bash
-npx link-agents doctor
-npx link-agents doctor --verbose
-```
-
-### `restore`
-
-Restore sync-managed targets from a snapshot.
-
-```bash
-npx link-agents restore --latest
-npx link-agents restore --list
-npx link-agents restore --id <snapshot-id>
-npx link-agents restore --latest --dry-run
+  Sync complete
 ```
 
 ## Supported Clients
 
-Public sync targets only home-directory clients. The repo-local `.agents/*` tree is canonical storage, not a public client target.
+| Client     | Root                 | AGENTS.md   | Skills               | MCP              |
+| ---------- | -------------------- | ----------- | -------------------- | ---------------- |
+| Codex      | `~/.codex`           | `AGENTS.md` | `skills/**/SKILL.md` | `config.toml`    |
+| Claude Code| `~/.claude`          | `CLAUDE.md` | `skills/**/SKILL.md` | `~/.claude.json` |
+| Cursor     | `~/.cursor`          | `AGENTS.md` | --                   | `mcp.json`       |
+| OpenCode   | `~/.config/opencode` | `AGENTS.md` | `skill/**/SKILL.md`  | `opencode.json`  |
 
-| Client    | Root                 | Agents      | Commands                         | Skills                                | MCP            |
-| --------- | -------------------- | ----------- | -------------------------------- | ------------------------------------- | -------------- |
-| `codex`   | `~/.codex`           | `AGENTS.md` | `skills/commands/**/SKILL.md`    | `skills/**/SKILL.md`                  | `config.toml` |
-| `claude`  | `~/.claude`          | `CLAUDE.md` | `commands/**/*.md`               | —                                     | — |
-| `cursor`  | `~/.cursor`          | `AGENTS.md` | `commands/**/*.md`               | —                                     | `mcp.json` |
-| `opencode`| `~/.config/opencode` | `AGENTS.md` | `command/**/*.md`                | `skill/**/SKILL.md`                   | `opencode.json` |
+## How It Works
 
-## Behavior Notes
+```
+~/.agents/                    Single source of truth
+  AGENTS.md          ──────>  ~/.codex/AGENTS.md      (symlink)
+  skills/                     ~/.claude/CLAUDE.md      (symlink)
+    my-skill/                 ~/.cursor/AGENTS.md      (symlink)
+      SKILL.md       ──────>  ~/.codex/skills/my-skill/SKILL.md
+  mcp.json           ──────>  ~/.codex/config.toml     (merged)
+                              ~/.claude.json           (merged)
+                              ~/.cursor/mcp.json       (symlink)
+                              ~/.config/opencode/opencode.json (merged)
+```
 
-- `~/.cursor/rules/*` is treated as an unsupported legacy input. It is reported by `sync`/`doctor`, but never imported into canonical storage.
-- `CLAUDE.md` can be left unmanaged with `--separate-claude-md`.
-- Restore points are created before `sync` mutates targets.
-- Generated symlinks always point back to canonical `.agents/*` sources, not to legacy client files.
-- Public sync does not read from or write to legacy project-level command locations.
+**Pipeline:** Discover assets → Collect winners → Fan out to clients → Apply (with snapshot)
+
+- **AGENTS.md** and **skills** are symlinked when content matches the canonical source, copied when client-specific transforms are needed.
+- **MCP configs** are always merge-copied — they target shared config files (Codex `config.toml`, Claude `.claude.json`, etc.) that contain other settings beyond MCP servers.
+- **Nested skills** are flattened during fanout: `skills/a/b/SKILL.md` becomes `skills/a-b/SKILL.md`.
+- A **snapshot** is created before every sync so you can roll back if something goes wrong.
+
+## Commands
+
+| Command | Description |
+| ------- | ----------- |
+| `link-agents sync` | Collect canonical assets and sync to all clients |
+| `link-agents doctor` | Inspect sync health and detect drift |
+| `link-agents restore` | Roll back to a previous snapshot |
+
+### sync
+
+```bash
+link-agents sync                  # interactive (asks symlink vs copy)
+link-agents sync --link           # prefer symlinks
+link-agents sync --copy           # always copy
+link-agents sync --dry-run        # preview without writing
+link-agents sync --types agents   # only sync specific types (agents, skills, mcp)
+link-agents sync --verbose        # show per-file details
+link-agents sync --root /path     # custom root (default: $HOME)
+```
+
+`--link` and `--copy` cannot be used together. MCP configs are always merge-copied regardless of write mode.
+
+### doctor
+
+```bash
+link-agents doctor                # check sync health
+link-agents doctor --verbose      # detailed output
+```
+
+Reports: canonical asset inventory, ignored legacy inputs (e.g. `~/.cursor/rules/*`), broken symlinks, and drift between canonical and client files.
+
+### restore
+
+```bash
+link-agents restore --list        # list available snapshots
+link-agents restore --latest      # restore most recent snapshot
+link-agents restore --id <id>     # restore a specific snapshot
+link-agents restore --dry-run     # preview restore
+```
+
+## Write Modes
+
+| Mode | When | Behavior |
+| ---- | ---- | -------- |
+| **Symlink** | Content identical to canonical source | Creates a relative symlink back to `~/.agents/*` |
+| **Copy** | Client needs transformed content | Writes an independent copy with client-specific changes |
+| **Merge** | MCP configs (always) | Reads existing config, merges in MCP servers, preserves other settings |
+
+## License
+
+MIT
